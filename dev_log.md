@@ -1430,3 +1430,48 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - 新しい場所の録画・地図が見える。ekf_localizer のテスト 32 個が通った。
   - ROS 2 のソケットは 127.0.0.1 だけで、TCP なし、239.255.0.1 に参加しない。
   - Gazebo を起動するとオドメトリが届いた（確かめたあと Gazebo は止めた）。
+
+## 2026-10-23
+
+### 61. MATLAB 用に、予測した base の姿勢（50 Hz）と、NDT で更新した直後の LiDAR の姿勢・同じ時刻の点群を出す
+
+- 目的（ユーザー指示）：MATLAB で、後輪の間の中心の姿勢 base_pose を予測で 50 Hz、LiDAR の姿勢 vlp16_pose を NDT で更新した値で購読し、
+  点群と同じ時刻の姿勢を組にして使う。今の MATLAB（`CR_debug` の `SensorFetcher`）は `/velodyne_points` と `/ekf_pose` をそれぞれ最新で取っていて、
+  時刻がそろう保証がない（Gazebo の `/ekf_pose` は最新のオドメトリの時刻、実機の `/ekf_pose` は点群の時刻の予測値）。
+- 決めたこと（ユーザーが選んだ）：型は PoseWithCovarianceStamped、トピックは `/localization/` の下。vlp16_pose は NDT が遅れたときに
+  予測値で代わりに出すことはしない（一番単純な方法。NDT が遅れても base_pose は 50 Hz で届く）。点群の出し直しは ekf_localizer に入れる
+  （やりやすい方）。録画に base_pose・vlp16_pose を足し、vlp16_points は足さない（中身は `/velodyne_points` と同じ）。
+- 先に測ったこと（録画の受信時刻と stamp）：実機 blue の走行中（`blue_spin5`）は、点群が stamp から 15 ms 後に届き、NDT の解は点群が届いてから
+  平均 34 ms（95 % 41、最大 122 ms。30 ms 以内は 15 %、50 ms 以内は 99.4 %）。Gazebo（`gazebo_spin5`・`gazebo_slalom`）は平均 37〜43 ms
+  （50 ms 以内は 92〜96 %）。53 の「点群の stamp から平均 79 ms」は再生のときの値で、走行中は平均 49 ms。
+- やったこと：
+  - ekf_localizer：出力を 3 つ足した（どれも `/tf`・`/ekf_pose` の出し方（NDT の初期値）と推定の計算は変えない）。
+    - `base_pose`（`base_pose_rate` [Hz]、`ekf.yaml` は 50、コードの既定 0 = 出さない）：`publish_trigger` とは別のタイマーで、最新の状態を
+      現在時刻まで予測した map → base と base の 6x6 の共分散（`timer` と同じ計算）。reliable、KeepLast(1)。
+    - `vlp16_pose`（`publish_vlp16_pose`）：NDT を入れた直後の状態（`stateAfter`、`/tf_ndt_update` と同じ）の map → LiDAR と J P Jᵀ。
+      stamp は点群の取得時刻。reliable、KeepLast(10)。
+    - `vlp16_points`（`publish_vlp16_points`）：届いた点群を stamp ごとに `history_length`（1 s）まで持っておき、`vlp16_pose` の直後に
+      同じ stamp の点群をそのまま出す。それ以前の点群（NDT が解かなかったもの）は捨てる。reliable、KeepLast(2)。
+    - `/ekf_pose`・`/ekf_odom` を作る処理を `lidarPoseMsg`・`basePoseMsg` にまとめた（値は同じ）。README・`docs/ekf_flow.md`。
+  - localization_bringup：環境ファイル 4 つの `nodes.ekf_localizer.topics` に `/localization/base_pose`・`vlp16_pose`・`vlp16_points`、`docs/node_graph.md`。
+  - localization_tools：`drive/config`（red・blue・white・gazebo・real_in_gazebo）の録画に `/localization/base_pose`・`/localization/vlp16_pose`。
+    `eval/replay_outputs.py`（録画全体を `ROS_DOMAIN_ID=99` で再生して出力を録る。実機の録画は環境ファイルの写しを `use_sim_time: true` にして `--clock` で流す）、
+    `plot/plot_matlab_outputs.py`（下の確かめと図）。
+- 結果：ekf_localizer のテスト 32 個が通った。録画を再生して確かめた（`plot_matlab_outputs.py`）：
+
+  | | Gazebo `gazebo_spin5` | 実機 blue `blue_spin5` |
+  |---|---|---|
+  | base_pose | 50.0 Hz（間隔 20 ms、最大 30 ms）。stamp から受信まで平均 0.4 ms | 50.0 Hz（最大 35 ms）。平均 0.3 ms |
+  | vlp16_pose | 1040 個（`/ndt_pose` と同じ数・同じ stamp）。`/tf_ndt_update` × 取付と一致（差 0）。点群の stamp から受信まで平均 40 ms（95 % 51 ms） | 730 個（同上）。一致。平均 70 ms（再生のため） |
+  | vlp16_points | 1040 個。すべてに同じ stamp の vlp16_pose があり、中身は入力の点群と同じ | 499 個。すべてに同じ stamp の vlp16_pose があり、中身は同じ。点群の付かない vlp16_pose が 231 個（ekf_localizer が受け取れなかった点群） |
+  | 点群の時刻の base_pose − NDT で更新した直後の値 | 水平 平均 1.0 mm（95 % 1.9、最大 37 mm）、yaw 平均 0.1°（最大 2.8°） | 平均 10.5 mm（95 % 20 mm）。最大 0.9 m・25° は再生で点群が落ちたため |
+
+  - 録画するノードには、姿勢より点群のほうが先に届いたものがある（Gazebo で 1040 個中 259 個、最大 18 ms 先）。購読する側は、2 つの stamp が
+    同じときだけ組にし、違えば前回の組を使う。
+  - 実機の録画をコンテナの中で再生すると、大きい点群（1 個 0.3 MB）が受け取る側で落ち、NDT が解いたのは 1527 個中 730 個だった。
+    新しい出力を止めても同じ（NDT 692 個、予測値と NDT で更新した直後の値の差は最大 2.2 m・26°。`tune/vlp16_check_blue_spin5_off`）で、
+    0.5 倍の速さで流しても変わらなかったので、今回の変更によるものではない（走行中の録画では NDT は 1519 個を解いていた）。
+  - base_pose は、NDT が届いてその時刻まで巻き戻して入れた直後に、点群の時刻の予測値と更新値の差（上の表）だけ跳ねる。
+- まだのこと：MATLAB（`CR_debug`）は変えていない（購読するトピック・`vehicleInfo.sensor` の欄・`Plant` の意味が変わるので、変え方をユーザーに聞く）。
+
+![MATLAB 用の出力：届くまでの時間と、点群の時刻の base_pose と NDT で更新した直後の値の差（Gazebo、spin5 の再生）](dev_log_images/matlab_outputs_gazebo_spin5.png)
