@@ -1,0 +1,13 @@
+# 単独のリポジトリ（repos.yaml。./clone_repos.sh で clone）と、git で管理しないもの
+/src/
+/docker/
+/archive/
+# 描いた図すべて（開発ログに埋め込む図は dev_log_images/ に写して管理する）
+/results/
+# 地図・録画・動画
+*.pcd
+*.db3
+*.mcap
+*.mp4
+*.webm
+__pycache__/
