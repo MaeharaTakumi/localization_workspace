@@ -123,8 +123,9 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 |---|---|---|---|
 | `20261002` | 8843520b410f | `ubuntu_22_04` | Gazebo（車椅子モデル・ワールド・MATLAB 連携）。**編集禁止**（例外は下記の許可済みの変更のみ） |
 | `test` | 3655c6997a90 | `localizer_maehara:latest` | **自己位置推定の開発用**（`docker/` からビルド。2026-10-15 に `test_maehara`・`localizer_rl:latest` から名前を変えた。2026-10-23 にフォルダの移動に合わせて作り直した） |
-| `whillLocalizer` | 833b462fee0a | `whill_localizer:latest` | これまでの自己位置推定。そのまま残す（触らない） |
-| `localizer_ekf` | 9394b9474888 | `localizer_ekf:latest` | `archive/localizer_ekf_docker` 製。停止中、参照用 |
+
+- 2026-10-23 にユーザーが `whillLocalizer`（これまでの自己位置推定、`whill_localizer:latest`）と `localizer_ekf`（`localizer_ekf:latest`）のコンテナとイメージを削除した。
+  `localizer_ekf` は `archive/localizer_ekf_docker` から作り直せる。`ros2_0605`・`ros2_1024`・`ros2_v2`（自己位置推定とは別のコンテナ。ユーザー指示で残す）は触らない。
 
 - **Gazebo コンテナへの許可済みの変更（2026-10-11）**：`/root/.bashrc` で `GZ_IP`・`IGN_IP`・`GAZEBO_IP` を 127.0.0.1、
   `GAZEBO_MASTER_URI=http://127.0.0.1:11345` にした（元は `/root/.bashrc.bak_20261011`）。Gazebo 自体（ROS ではない）の
