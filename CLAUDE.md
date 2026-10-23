@@ -122,7 +122,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 | コンテナ | ID | イメージ | 役割 |
 |---|---|---|---|
 | `20261002` | 8843520b410f | `ubuntu_22_04` | Gazebo（車椅子モデル・ワールド・MATLAB 連携）。**編集禁止**（例外は下記の許可済みの変更のみ） |
-| `test` | 55e37016c9b9 | `localizer_maehara:latest` | **自己位置推定の開発用**（`docker/` からビルド。2026-10-15 に `test_maehara`・`localizer_rl:latest` から名前を変えた） |
+| `test` | 3655c6997a90 | `localizer_maehara:latest` | **自己位置推定の開発用**（`docker/` からビルド。2026-10-15 に `test_maehara`・`localizer_rl:latest` から名前を変えた。2026-10-23 にフォルダの移動に合わせて作り直した） |
 | `whillLocalizer` | 833b462fee0a | `whill_localizer:latest` | これまでの自己位置推定。そのまま残す（触らない） |
 | `localizer_ekf` | 9394b9474888 | `localizer_ekf:latest` | `archive/localizer_ekf_docker` 製。停止中、参照用 |
 
@@ -144,7 +144,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 - `test` は numpy 入り。`.bashrc` の通信設定は既定で Gazebo 用。
   `ROS_DOMAIN_ID=11`、Gazebo・MATLAB と同じ Fast DDS プロファイル（`/root/fastdds_localhost.xml`、localhost のみ）。
   実機（LAN 越しに LiDAR PC と通信）では `.bashrc` の通信設定ブロックを切り替える。
-- イメージ `localizer_maehara:latest`（`docker/`（localizer_docker）86c9ae8。2026-10-15 にビルドし、コンテナ `test` を作った）：`localization_bringup` は既定で `humble`（build-arg `BRINGUP_BRANCH`）、
+- イメージ `localizer_maehara:latest`（`docker/`（localizer_docker）86c9ae8。2026-10-15 にビルド。コンテナ `test` は 2026-10-23 にこのイメージから作り直し、`src/` の 4 つを写してビルド、localization_tools を `sync.sh push`、`.bash_history`・`.rviz2` を戻した）：`localization_bringup` は既定で `humble`（build-arg `BRINGUP_BRANCH`）、
   `localization_tools`（`main`）を `/root/ros2_ws/localization_tools` に clone、録画と図の置き場所 `/root/ros2_ws/bags/{gazebo,real}`・
   `/root/ros2_ws/fig`、地図 `/root/ros2_ws/map`（どれも `COLCON_IGNORE` 入り。`savemap`・地図選択も `/root/ros2_ws/map`）を作る。
   開発中のものは `src/` から `docker cp`（`localization_tools` は `sync.sh push`）で上書きする。

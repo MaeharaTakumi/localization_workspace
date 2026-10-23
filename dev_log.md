@@ -1410,3 +1410,23 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   エラーの 7 通りも確かめた。
 - 気づいたこと：RViz の設定（lidar_localization の `rviz/localization2.rviz`）の EKFPose は `/ekf/pose` を Pose（PoseStamped）で表示するが、
   配信するノードは無い（ekf_localizer は `/ekf_pose` を PoseWithCovarianceStamped で出す）。直していない。
+
+### 60. ホストのフォルダを整理し、開発ログを GitHub で管理する
+
+- 目的（ユーザー指示）：今後 localization 以外の Docker も使うので、ホストの `Docker/workspace` を `Docker/localization` にまとめる。開発ログなども GitHub で管理する。
+- やったこと（2026-10-23）：
+  - 構成：`Docker/localization/` に `src/`（開発中のリポジトリ 6 つと MATLAB）、`docker/`（localizer_docker と `data/`）、`results/`（図）、
+    `archive/`（`localizer_ekf_docker`）を置いた。`localizer_docker-main`・`localizer_docker_test` はユーザーが消した。
+  - `Docker/localization` を `MaeharaTakumi/localization_workspace`（Public）にした。管理するのは `CLAUDE.md`・`dev_log.md`・`gazebo_changes.md`・
+    `dev_log_images/`・`repos.yaml`・`clone_repos.sh`・`README.md`。中のリポジトリ・`results/`・地図・動画は `.gitignore` で外した（ユーザー指示）。
+  - 開発ログに埋め込む図は `dev_log_images/`（61 枚、12 MB）に写し、埋め込みのパスを書き換えた（ユーザーの案）。
+  - localization_tools の `sync.sh pull` の図の行き先を `Docker/localization/results` にした（`42ec148`）。
+  - コンテナ `test` を作り直した。録画・地図・図の割り当てが古いパスのままだったため（`docker compose up -d --no-build --force-recreate`）。
+    - 作り直す前に、コンテナの中の `src` がホストと同じこと（違いは localization_bringup の説明文 2 つだけで、ホストが新しい）を確かめた。
+    - 作り直したあと、`src/` の 4 つを写してビルドし、localization_tools を写した（イメージを作ったときの古い `calib/`・`noise/` は消した）。
+      `.bash_history`・`.rviz2` を戻した。
+    - `.bashrc`・`fastdds_localhost.xml`・`.bash_aliases` は前と同じだった。
+- 確かめたこと：
+  - 新しい場所の録画・地図が見える。ekf_localizer のテスト 32 個が通った。
+  - ROS 2 のソケットは 127.0.0.1 だけで、TCP なし、239.255.0.1 に参加しない。
+  - Gazebo を起動するとオドメトリが届いた（確かめたあと Gazebo は止めた）。
