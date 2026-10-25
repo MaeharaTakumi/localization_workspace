@@ -11,13 +11,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 場所 | 中身 | git |
 |---|---|---|
 | `./`（このディレクトリ） | `CLAUDE.md`・`dev_log.md`・`gazebo_changes.md`・`dev_log_images/`・`repos.yaml`・`clone_repos.sh` | **`MaeharaTakumi/localization_workspace`（Public、main）**。`.gitignore` で `src/`・`docker/`・`archive/`・`results/`・地図・動画を外す |
-| `src/` | 開発中のリポジトリ（下の 6 つ）と MATLAB（`whill_common_matlab-main _ndtDebug`、git ではない） | それぞれ単独のリポジトリ（一覧は `repos.yaml`、`./clone_repos.sh` で clone） |
+| `src/` | 開発中のリポジトリ（下の 6 つ）と MATLAB（`whill_common_matlab-main _ndtDebug`） | それぞれ単独のリポジトリ（一覧は `repos.yaml`、`./clone_repos.sh` で clone）。MATLAB は `MaeharaTakumi/whill_common_matlab`（Public）の `cr_debug` ブランチ（下記。フォルダ名に空白があるので `repos.yaml` には入れていない） |
 | `docker/` | Docker 定義（`MaeharaTakumi/localizer_docker`）と `data/{bags,map,fig}`（録画・地図・図。git の外） | 単独のリポジトリ |
 | `results/` | 描いた図すべて（`sync.sh pull` の行き先。git の外） | なし |
 | `dev_log_images/` | 開発ログ・`gazebo_changes.md` に埋め込む図（`results/` から写す。**開発ログに図を足したら、ここに写して埋め込む**） | このリポジトリ |
 | `archive/` | 使っていないもの（`localizer_ekf_docker` など） | なし |
 
 push はリポジトリごとに、作業の区切りのよいところで行う（このリポジトリも）。
+
+- **MATLAB**（`src/whill_common_matlab-main _ndtDebug`。2026-10-26、ユーザー指示）：`acsl-tcu/whill_common_matlab`（Public）を
+  `MaeharaTakumi/whill_common_matlab` にフォークし、手元のフォルダをその場で git にした（ファイルは動かしていない。`origin` がフォーク、`upstream` が元）。
+  ブランチ `cr_debug`（フォークの main は元のまま）は、元の `4cae255`（2026-03-31。手元のフォルダの元）に、今の CR_debug（`b7ef33f`）と
+  MATLAB 用の出力の購読（`4db08f7`）を足したもの。元の main のその後の 2 つ（MATLAB 2026a 対応の `+mode/+CR/GazeboMode.m`、README）は
+  取り込んでいない（手元で変えていないファイルなので衝突しない）。手元の .m は実行権付きで CRLF のものもあるので、このフォルダの `.git` だけで
+  `core.fileMode false` と `.git/info/attributes` の `* -text`（改行を直さない）にしている。`data/` は元の `.gitignore` で外れる。
+  ホストの MATLAB R2026a（ROS Toolbox）は `-batch` で動かせる（MATLAB の MCP はつながらないことがある）。
 ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テスト・起動はすべて `docker exec` 経由。
 
 - `src/localization_bringup/`：`MaeharaTakumi/localization_bringup` の clone。ブランチ `humble`（2026-10-15 に `robot_localization` ブランチから
@@ -252,7 +260,9 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   reliable + transient_local、KeepLast(1)。`ekf_localizer` は `publish_trigger` で `timer`（現在時刻まで予測）か
   `cloud`（点群の stamp の時刻）を選ぶ（実機の `red.yaml` などは `cloud`）。
 - **RViz の点群**（2026-10-19、`dev_log.md` の 53）：`/velodyne_points` は点群の stamp の時刻の TF（ekf_localizer の予測値。`publish_trigger: cloud`）でmap に直されるので、NDT の解ではない。ユーザー指示で、ekf_localizer が NDT で更新した直後の値（点群の時刻の事後推定値）を TF map → base として `/tf_ndt_update`（`publish_ndt_update_tf`、`LaggedEkf::stateAfter`）に出し、launch が RViz の `/tf` を `/tf_ndt_update` に付け替えて、RViz 側で点群を変換する（`use_ekf:=true` のとき。`/tf` は予測値のまま。NDT の初期値に使うので変えない）。NDT が解かなかった点群は前後の更新値の補間で表示される。予測値との差は実機 blue で 10 m 先の点が平均 3〜4 cm・速度が変わる瞬間に最大 0.3〜0.5 m、更新値と NDT の解の差は blue の小さい R_ndt では 0.2 mm・0.01° 未満（`plot/plot_prior_posterior.py`、`dev_log.md` の 53・54。NDT の解で直した点群 `/aligned_points` を出す版（53）は 54 でやめた）。RViz の既定の視点は `TopDownOrtho`・Target Frame `base_link`（自車両を中心に真上から、向きは地図で固定。2026-10-19、ユーザー指示。`dev_log.md` の 55）。RViz の画面は localization_tools の `record_rviz.sh`（ホストで実行。RViz の窓を探して ffmpeg の x11grab `-window_id` で録る。コンテナに ffmpeg は無い。`dev_log.md` の 56）で録画する。RViz2 は設定ファイルの `Hide Left Dock`・`Hide Right Dock` を起動時に効かせない（欄を出さずに録るときは、録画用の設定の写しから Displays・Views などのパネルを除く）。rviz2 は SIGINT で終わらないことがあるので、止まらなければ SIGKILL（`dev_log.md` の 57）。
-- **MATLAB 用の出力**（2026-10-23、ユーザー指示。`dev_log.md` の 61。MATLAB の `CR_debug` はまだ切り替えていない）：ekf_localizer が
+- **MATLAB 用の出力**（2026-10-23、ユーザー指示。`dev_log.md` の 61・62。MATLAB の CR_debug は 2026-10-26 から sensor(1) で
+  `vlp16_points`、sensor(5)（Matching）で `base_pose` を `Plant` に、新しく足した sensor(8) で `vlp16_pose` を購読し、`SensorFetcher` が stamp で組にして
+  `data.LIDAR`・`data.LIDAR_pose`・`data.LIDAR_new` に入れる。sensor(8) を書いていない main では false として動く）：ekf_localizer が
   `/localization/base_pose`（`base_pose_rate` 50 Hz。`publish_trigger` とは別のタイマーで、現在時刻まで予測した map → base（後輪の間の中心）。
   観測が `max_predict_dt` 0.2 s より長く途切れるとそれ以上進まない）、`/localization/vlp16_pose`（NDT で更新した直後の map → LiDAR、
   `/tf_ndt_update` と同じ状態、stamp は点群の取得時刻）、`/localization/vlp16_points`（vlp16_pose の直後に同じ stamp の点群をそのまま出し直す）を出す。

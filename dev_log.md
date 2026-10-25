@@ -1475,3 +1475,33 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 - まだのこと：MATLAB（`CR_debug`）は変えていない（購読するトピック・`vehicleInfo.sensor` の欄・`Plant` の意味が変わるので、変え方をユーザーに聞く）。
 
 ![MATLAB 用の出力：届くまでの時間と、点群の時刻の base_pose と NDT で更新した直後の値の差（Gazebo、spin5 の再生）](dev_log_images/matlab_outputs_gazebo_spin5.png)
+
+## 2026-10-26
+
+### 62. MATLAB（whill_common_matlab）をフォークして git にし、CR_debug で MATLAB 用の出力を購読して組にする
+
+- 目的（ユーザー指示）：手元の MATLAB（`src/whill_common_matlab-main _ndtDebug`、git ではなかった）を自分のリポジトリで管理し、61 の出力
+  （後輪間中心の base_pose を予測で 50 Hz、点群の時刻の LiDAR の vlp16_pose）を CR_debug で購読する。
+- 決めたこと（ユーザーが選んだ）：`acsl-tcu/whill_common_matlab`（Public、フォーク可）を `MaeharaTakumi/whill_common_matlab` にフォークし、
+  ブランチ `cr_debug` に入れる（フォークの main は元のまま）。vlp16_pose は新しい sensor(8) で購読する（sensor(5) にまとめる案は、
+  点群と別のフラグになり「点群の無い姿勢」「姿勢の無い点群」の組み合わせができること、個別に止められないこと、
+  「1 フラグ = 1 トピック」の決まりが崩れることから採らなかった）。
+- やったこと：
+  - 手元のフォルダは元の `4cae255`（2026-03-31）に手を加えたものだった（その commit との違いは 3 ファイルの変更と 5 か所の追加）。
+    フォルダをその場で git にして（ファイルは動かさない）`4cae255` に合わせ、今の CR_debug をそのまま commit した（`b7ef33f`。`data/` は元の `.gitignore` で外れる）。
+    手元の .m は実行権付きで CRLF のものもあるので、このフォルダの `.git` だけで `core.fileMode false` と `* -text`（改行を直さない）にした。
+  - CR_debug（`4db08f7`）：LiDAR（sensor(1)）は `/localization/vlp16_points`、Matching（sensor(5)）は `/localization/base_pose`（`Plant` が後輪間中心になる）、
+    新しい sensor(8) は `/localization/vlp16_pose`。`SensorFetcher` は 2 つの stamp が同じときだけ組を新しくし、違えば前の組を使う。
+    `data.LIDAR_pose`（X〜Yaw・共分散・stamp）、`data.LIDAR_new`（前の周期と違う点群か）を足した。sensor(8) を書いていない main では false として動く。
+    sensor(8) だけオンで LiDAR がオフならエラーで止める。main.m に sensor(8) を足した。
+  - localization_tools：`matlab/check_cr_debug.m`（MATLAB を `-batch` で動かし、CR_debug のクラスで購読して周期ごとに記録する）、
+    `plot/plot_cr_debug_pairs.py`（図）。
+- 結果：
+  - `checkcode`：変えた 3 ファイルの指摘は、もとからある `Plant = struct(... [.0] ...)` の括弧だけ。
+  - Gazebo の録画（`gazebo_spin5`）を `ROS_DOMAIN_ID=99` で再生しながら、ホストの MATLAB R2026a で 70 s 購読した（Gazebo モードと同じ Fast DDS の
+    localhost のプロファイル）：20.0 Hz の 1401 周期すべてで組が取れ、点群と LiDAR の姿勢の stamp が違う組は 0。新しい組は 683 個で間隔は
+    中央値 100 ms（最大 200 ms。Gazebo の LiDAR は 10 Hz）。`Plant` は毎周期新しい値（base_pose は 50 Hz）。後輪間中心と LiDAR の水平の差は
+    中央値 0.169 m（取付 0.17 m）。
+- まだのこと：Gazebo を動かした走行（制御を含む）と実機では確かめていない。元の main のその後の 2 つの commit（MATLAB 2026a 対応）は取り込んでいない。
+
+![MATLAB（CR_debug）が受け取った姿勢と組（Gazebo、spin5 の再生）](dev_log_images/matlab_cr_debug_gazebo_spin5.png)
