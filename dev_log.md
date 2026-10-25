@@ -1505,3 +1505,25 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 - まだのこと：Gazebo を動かした走行（制御を含む）と実機では確かめていない。元の main のその後の 2 つの commit（MATLAB 2026a 対応）は取り込んでいない。
 
 ![MATLAB（CR_debug）が受け取った姿勢と組（Gazebo、spin5 の再生）](dev_log_images/matlab_cr_debug_gazebo_spin5.png)
+
+### 63. MATLAB の図（myplotResult）を、後輪間中心の Plant と点群の時刻の LiDAR の姿勢に合わせる
+
+- 目的（ユーザー指示）：62 で `Plant` が LiDAR の姿勢（`/ekf_pose`）から後輪間中心（`/localization/base_pose`）に変わり、LiDAR の姿勢は
+  `data.LIDAR_pose` に入るようになったので、記録の図（`+plotter/myplotResult.m`）も合わせる。
+- やったこと（whill_common_matlab の `cr_debug`、`009c949`）：
+  - `Position`・`Angle`：`Plant`（題は「Base pose (rear axle center)」。`LIDAR_pose` の無い古い記録は「Plant」）。受け取る前の周期（値が 0）を除き、
+    yaw を ±π で折り返さないようにつないだ（`SensorFetcher` の角度の補正は 1 つ前の値に合わせるだけで、折り返しが残っていた）。
+  - 足した図：`Position_LiDAR`・`Angle_LiDAR`（新しい組を受け取った周期の `LIDAR_pose`。横軸は受け取った周期の時刻）、`Trajectory`
+    （後輪間中心と LiDAR の平面の軌跡）、`LiDAR_pair_interval`（新しい組の間隔。点群の stamp の差）。
+  - NDT の図は、`NDT_info` を受け取った周期だけ使う（周期ごとに `RawData` のフィールドがそろわないと `cat` で落ちていた）。
+    `SensorFetcher` は `data.NDT_info` を最初から `[]` にして、どの周期も同じフィールドにした。
+  - 線は実線で色を指定（`yyaxis` で Y が破線になっていた）、後に描く線ほど細く、枠は黒。
+  - localization_tools：`matlab/check_cr_debug_plot.m`（main.m と同じ流れで記録し、`DataPlotter`・`myplotResult` まで描く。指令は配信しない）。
+- 結果：Gazebo の録画（`gazebo_spin5`）を `ROS_DOMAIN_ID=99` で再生しながら 50 s（998 周期）記録して描いた。9 枚とも描け、
+  後輪間中心はその場の回転の間ほぼ動かず（数 mm）、LiDAR はその周りを半径 0.17 m で回る。yaw は後輪間中心と LiDAR で同じように増える。
+  新しい組の間隔はほぼ 100 ms（落ちたところで 200〜300 ms）。2026-10-19 の記録（`data/20261019/20261019_041954` の写し）も描けた
+  （`LIDAR_pose` が無いので LiDAR の図は描かない）。`checkcode` の指摘は、もとからある使わない引数 `cfg` だけ。
+- 気づいたこと：確かめている間、コンテナ `test` でユーザーの自己位置推定（RViz 付き、`ROS_DOMAIN_ID` は別）が動いていた。再生とは混ざらないが、
+  CPU は取り合っていた可能性がある（NDT のノードが CPU 394 %）。
+
+![MATLAB（myplotResult）の図：Plant（後輪間中心）と LIDAR_pose（Gazebo、spin5 の再生）](dev_log_images/matlab_cr_debug_myplot_gazebo_spin5.png)
