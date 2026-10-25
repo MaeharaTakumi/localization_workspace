@@ -1601,3 +1601,29 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   `rmem_default`。システムの設定なのでユーザーが行う）と、再生でも走行中でも防げる見込み。
 
 ![同じ PC の UDP で届いた点群の割合（35 s の再生）](dev_log_images/cloud_drop_udp.png)
+
+### 67. ソケットの受信バッファを 8 MB にして、実機の録画の再生と MATLAB を確かめ直す
+
+- 目的：66 の原因（受信バッファ 208 kB に実機の点群 314 kB が収まらない）を、受信バッファを上げて直せるか確かめる。
+- やったこと：ユーザーがホストで `sudo sysctl -w net.core.rmem_max=8388608 net.core.rmem_default=8388608` を実行した（Claude Code の中のシェルからは
+  「no new privileges」で sudo が動かないので、アプリの外の端末で）。コンテナ `test` もホストのネットワークなので同じ値になる（確かめた）。
+  そのあと、66 と同じ点群だけの再生、`replay_outputs.py`（出力を録る）、`replay_matlab.sh` を実機 blue の録画（`blue_spin5`）で流し直した。
+- 結果：
+
+  | | 受信バッファ 208 kB（66・65・61） | 8 MB |
+  |---|---|---|
+  | 点群だけの再生で届いた数（best effort / reliable） | 実機 345 / 681、Gazebo 339 / 345 | 実機 699 / 699、Gazebo 345 / 345 |
+  | NDT が解いた点群 | 730 / 1527 | 1515 / 1527（走行中の録画は 1519） |
+  | vlp16_pose が点群の stamp から届くまで | 平均 70 ms | 平均 45.5 ms（95 % 62 ms。走行中は 49 ms） |
+  | vlp16_points に組が無い vlp16_pose | 231 | 0（1515 個すべて組で、中身は入力と同じ） |
+  | 点群の時刻の base_pose − NDT で更新した直後の値 | 最大 914 mm・25° | 平均 4.0 mm・最大 23 mm、yaw 最大 1.3° |
+  | MATLAB（`replay_matlab.sh`、mode 3）の点群の古さ 周期ごと / 新しい組 | 平均 207 / 86 ms | 平均 70 / 68 ms |
+  | MATLAB の新しい組の間隔 | 最大 1.4 s | ほぼ 50 ms（MATLAB の 1 周期に 2 個届いたときは 100 ms） |
+  | MATLAB の「メッセージが失われました」 | 16 回 | 0 回 |
+
+  - 受信バッファを上げると、録画の再生でも走行中とほぼ同じになった。実機の録画の再生も、比べるのに使える。
+  - MATLAB の点群の古さは、LiDAR と MATLAB がどちらも 20 Hz で同期していないので、数秒ごとにずれながら 40〜100 ms の間を動く。
+- 注意：`sysctl -w` は再起動すると元に戻る（`/etc/sysctl.d/` にはまだ書いていない）。上げる前から動いているノードは古い大きさのままなので、起動し直す。
+  実機の PC でも、MATLAB が同じ PC の UDP で `/localization/vlp16_points` を受けるので、同じ設定にしておくのがよい。
+
+![受信バッファ 208 kB（上）と 8 MB（下）の、実機 blue の録画の再生での MATLAB の点群の古さ・新しい組の間隔・軌跡](dev_log_images/replay_blue_spin5_buffer_compare.png)
