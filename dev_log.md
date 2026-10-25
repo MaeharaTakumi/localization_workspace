@@ -1527,3 +1527,22 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   CPU は取り合っていた可能性がある（NDT のノードが CPU 394 %）。
 
 ![MATLAB（myplotResult）の図：Plant（後輪間中心）と LIDAR_pose（Gazebo、spin5 の再生）](dev_log_images/matlab_cr_debug_myplot_gazebo_spin5.png)
+
+### 64. MATLAB で点群地図と取得点群の動画を作る（myplotPointCloudVideo）
+
+- 目的（ユーザー指示）：実験データの `ndt/20261016/20261016_151938_搭乗/myplotPointCloudVideo.m` を参考に、記録から動画を作る処理を足す。
+  参考のスクリプトは `Plant`（当時は `/ekf_pose`、LiDAR の姿勢）でその周期の最新の点群を地図座標系に直していて、点群と姿勢の時刻がそろっていなかった。
+- やったこと（whill_common_matlab の `cr_debug`、`58f3e47`）：
+  - `+plotter/myplotPointCloudVideo.m`：点群は同じ stamp の `LIDAR_pose`（62）で地図座標系に直す（同じ点群のあいだは直さずに前のフレームのまま）。
+    自己位置の矢印と軌跡は `Plant`（後輪間中心）、LiDAR の位置も点で描く。`LIDAR_pose` の無い古い記録は、これまでどおり `Plant` で直す。
+    表示する高さの範囲は、その時刻の LiDAR の高さから −1.0〜+1.2 m（床と天井を除く。参考の絶対値 −1.4〜1.8 m は Gazebo の地図（床の高さ約 12.3 m）では合わないため）。
+    動画は `result/video/pointcloud_map.avi`（Motion JPEG、20 fps、MATLAB の周期の時刻に合わせてフレームを繰り返す。参考と同じ）。
+    線と点の色は dataviz の参照パレット、枠は黒。
+  - `main.m`：`makeVideo`（既定 true）と `mapFile`（既定は Gazebo の地図 `docker/data/map/SC10_4_0.05.pcd`。空か無いファイルなら点群だけ）を足し、最後に呼ぶ。
+  - localization_tools：`matlab/check_cr_debug_plot.m` で動画も作る（地図は環境変数 `MAP`）。
+- 結果：63 の記録（Gazebo の `gazebo_spin5` の再生、50 s）から 888 フレーム（1200 x 760）、2026-10-19 の記録の写しから 449 フレームの動画ができた
+  （2 つで約 1.5 分）。新しい記録では、その場で回っている間も点群が地図の壁に重なる。前の記録では、回っている間に点群が地図からずれて
+  二重に見える（点群と姿勢の時刻のずれ）。`checkcode` の指摘はなし。
+- 動画：`results/matlab_outputs/video/`（`cr_debug_gazebo_spin5.avi`・`old_20261019_041954.avi`。git の外）。
+
+![MATLAB の動画のフレーム：直した後（左・中、回転中）と前の記録（右、回転中）](dev_log_images/matlab_cr_debug_video_frames.png)
