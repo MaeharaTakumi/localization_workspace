@@ -274,7 +274,10 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   購読側は 2 つの stamp が同じときだけ組にする（届く順は入れ替わることがある。Gazebo の再生で 1040 個中 259 個は点群が先）。
   NDT の解は実機 blue の走行中で点群が届いてから平均 34 ms（50 ms 以内 99.4 %）、Gazebo で平均 37〜43 ms。
   確かめるのは localization_tools の `eval/replay_outputs.py`（録画全体を再生して出力を録る）と `plot/plot_matlab_outputs.py`。
-  実機の録画をコンテナの中で再生すると大きい点群が受け取る側で落ちる（blue で NDT が解くのは半分ほど。出力を止めても、0.5 倍の速さでも同じ）。
+  実機の録画をコンテナの中で再生すると大きい点群が受け手の側で落ちる（blue で NDT が解くのは半分ほど。出力を止めても、0.5 倍の速さでも同じ）。
+  原因（`dev_log.md` の 66）：ROS 2 は 127.0.0.1 の UDP だけ（共有メモリなし）で、ソケットの受信バッファが 208 kB（`net.core.rmem_max` も同じ）。
+  314 kB の実機の点群は断片があふれ、best effort の受け手（NDT・ekf_localizer・Gazebo モードの MATLAB）は約半分を失う（reliable は再送で全部届く。
+  151 kB の Gazebo の点群は 98 % 届く）。実機の MATLAB が受ける `/localization/vlp16_points` も同じ PC の UDP なので、受信バッファを上げる（ユーザーが sysctl で）と防げる見込み。
 - **`/initialpose`** は NDT が **LiDAR の姿勢**として扱う（RViz の 2D Pose Estimate は z=0）。
 - **ekf_localizer の予測**（`src/ekf_core.cpp` の `propagate`、2026-10-12 から）：水平面を移動すると仮定した中点法（RK2）。
   yaw_m = yaw + omega dt/2、x += v dt cos(yaw_m)、y += v dt sin(yaw_m)、yaw += omega dt。roll, pitch による v, omega の分解はしない。

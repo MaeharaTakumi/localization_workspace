@@ -1576,3 +1576,28 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 - 気づいたこと：MATLAB の DataLogger は 10000 周期（20 Hz で 500 s）を超えると古い記録を上書きするので、長い録画は途中から残らない。
 
 ![点群の古さ（左）と車両中心を描いた動画（右）。上：Gazebo、下：実機 blue の再生](dev_log_images/matlab_replay_age_video.png)
+
+### 66. コンテナの中で録画を再生すると、実機の点群が半分ほど届かない理由
+
+- 目的（ユーザーの質問）：61・65 で「コンテナの中で再生すると大きい点群が落ちる」と書いたことの中身を確かめる。
+- やったこと：コンテナ `test`（`ROS_DOMAIN_ID=99`）で点群（`/velodyne_points`）だけを 35 s 再生し、何もしない受け手（中身を読まない）を
+  best effort と reliable の 2 つ置いて、届いた数を数えた。ホストのソケットの受信バッファ（`net.core.rmem_default`・`rmem_max`）と、
+  ROS 2（Fast DDS）の設定（`/root/fastdds_localhost.xml`）、録画の QoS を見た。
+- 結果：
+
+  | 録画 | 点群 1 個 | best effort | reliable |
+  |---|---|---|---|
+  | 実機 blue `blue_spin5` | 314 kB | 345 個（51 %） | 681 個（全部） |
+  | Gazebo `gazebo_spin5` | 151 kB | 339 個（98 %） | 345 個（全部） |
+
+  - ROS 2 は 127.0.0.1 の UDP だけで通信する設定（共有メモリは使わない）なので、点群は受け手ごとに UDP で送られ、64 kB ごとの断片に分かれる。
+    受信バッファは 212992 B（208 kB）で、`rmem_max` も同じなので、これより大きくできない。
+  - 同じ PC の中では断片がほぼ一度に届くので、208 kB を超える実機の点群（314 kB）は、受け手が読み出す前にバッファからあふれた断片が捨てられる。
+    best effort の受け手（NDT・ekf_localizer・Gazebo モードの MATLAB）は再送がないので、断片が 1 つでも欠けると点群ごと失う。
+    reliable の受け手（実機モードの MATLAB・録画）は再送で全部受け取る（再送の分遅れる）。Gazebo の点群（151 kB）はバッファに収まるのでほとんど落ちない。
+  - 実機の走行中は、点群はラズパイから LAN で届き、NDT は 1527 個中 1519 個を解いていた（61）。LAN の速さで断片が少しずつ届くためと考えられる（確かめていない）。
+- 気づいたこと：62 で、実機の MATLAB は ekf_localizer が出し直す `/localization/vlp16_points`（314 kB）を同じ PC の UDP で受け取るようになった。
+  実機モードの MATLAB は reliable なので失わないが、再送の分だけ遅れることがある。受信バッファを大きくする（`sysctl` の `net.core.rmem_max`・
+  `rmem_default`。システムの設定なのでユーザーが行う）と、再生でも走行中でも防げる見込み。
+
+![同じ PC の UDP で届いた点群の割合（35 s の再生）](dev_log_images/cloud_drop_udp.png)
