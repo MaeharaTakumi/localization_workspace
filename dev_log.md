@@ -1546,3 +1546,33 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 - 動画：`results/matlab_outputs/video/`（`cr_debug_gazebo_spin5.avi`・`old_20261019_041954.avi`。git の外）。
 
 ![MATLAB の動画のフレーム：直した後（左・中、回転中）と前の記録（右、回転中）](dev_log_images/matlab_cr_debug_video_frames.png)
+
+### 65. 点群の古さ（現在時刻 − 点群の stamp）の図、動画の車両中心、録画の再生から MATLAB の図までを 1 回で行うスクリプト
+
+- 目的（ユーザー指示）：(1) MATLAB が使う点群が何秒前のものかの時間推移を描く。(2) 動画に車両中心（ユーザーの答え：後輪間中心）を描く。
+  (3) 録画を再生して自己位置推定・MATLAB・図までを行えるようにする。
+- やったこと：
+  - whill_common_matlab（`cr_debug`、`47e66df`）：
+    - `ROS2CommManager`：データを受け取った直後の ROS の時刻を `data.Now` に入れる（`ros2time(node,"now")`）。Gazebo（mode 2）と
+      `cfg.useSimTime`（録画の再生）は、MATLAB のノードの `use_sim_time` を true にして `/clock` の時刻にする（`setParameter` で効くことを確かめた）。
+      実機はこの PC の時刻（ラズパイと時刻同期している）。
+    - `myplotResult`：`LiDAR_age`（`data.Now` − 使った点群の stamp。周期ごとの線と、新しい組を受け取った周期の点。凡例に平均）。
+    - `myplotPointCloudVideo`：車両中心（後輪間中心）を黒い点で描く（矢印は向き、緑の点は LiDAR）。
+  - localization_tools：`matlab/replay_matlab.sh`（ホストで実行。MATLAB を先に起動して購読ができたら（`READY_FILE`）、コンテナで録画を再生し
+    （`replay_outputs.py`。新しく `RECORD=0` で出力を録らない）、新しい組が `STOP_IDLE`（既定 5）秒来なくなったら MATLAB が止まって
+    `DataPlotter`・`myplotResult`・`myplotPointCloudVideo` を作る）。`check_cr_debug_plot.m` に `MODE`（3 で実機のトピック）・`COLOR`・`SIM_TIME`・
+    `STOP_IDLE`・`READY_FILE` を足した。
+- 結果（`replay_matlab.sh`。記録・図・動画は `results/matlab_outputs/replay_*`、git の外。記録の .mat は点群を含むので 0.8〜1.2 GB）：
+
+  | 録画 | かかった時間 | MATLAB の周期 | 動画 | 点群の古さ 周期ごと / 新しい組を受け取った周期 |
+  |---|---|---|---|---|
+  | Gazebo `gazebo_spin5`（106 s） | 5 分 13 秒 | 2429 | 2197 フレーム（録画の全体） | 平均 85 ms / 59 ms |
+  | 実機 blue `blue_spin5`（77 s） | 4 分 26 秒 | 1848 | 1624 フレーム | 平均 207 ms / 86 ms |
+
+  - Gazebo は LiDAR が 10 Hz なので、点群の古さは MATLAB の周期（20 Hz）ごとにのこぎり状に増える（新しい組を受け取ったときの約 60 ms は NDT の計算と受け取りの待ち）。
+  - 実機の録画は、コンテナの中の再生で大きい点群が落ちるので（61）、新しい組の間隔が最大 1.4 s 空き、点群の古さも大きい。base_pose にも跳ねがある。
+    走行中の値ではない。MATLAB は実機と同じ設定（mode 3、reliable・Depth 1）で購読し、`/localization_debug`・`base_pose` の「メッセージが失われました」の
+    警告が 16 回出た（Depth 1 で古いものが置き換わったもので、最新を読む使い方には影響しない）。
+- 気づいたこと：MATLAB の DataLogger は 10000 周期（20 Hz で 500 s）を超えると古い記録を上書きするので、長い録画は途中から残らない。
+
+![点群の古さ（左）と車両中心を描いた動画（右）。上：Gazebo、下：実機 blue の再生](dev_log_images/matlab_replay_age_video.png)

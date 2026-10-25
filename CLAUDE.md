@@ -264,7 +264,9 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   `vlp16_points`、sensor(5)（Matching）で `base_pose` を `Plant` に、新しく足した sensor(8) で `vlp16_pose` を購読し、`SensorFetcher` が stamp で組にして
   `data.LIDAR`・`data.LIDAR_pose`・`data.LIDAR_new` に入れる。sensor(8) を書いていない main では false として動く。記録の図 `+plotter/myplotResult.m` は
   `Position`・`Angle`（Plant）、`Position_LiDAR`・`Angle_LiDAR`・`Trajectory`・`LiDAR_pair_interval`（`dev_log.md` の 63）。点群地図と取得点群の動画は
-  `+plotter/myplotPointCloudVideo.m`（点群は同じ stamp の `LIDAR_pose` で直す。main.m の `makeVideo`・`mapFile`。`dev_log.md` の 64））：ekf_localizer が
+  `+plotter/myplotPointCloudVideo.m`（点群は同じ stamp の `LIDAR_pose` で直す。車両中心（後輪間中心）は黒い点。main.m の `makeVideo`・`mapFile`。`dev_log.md` の 64・65）。
+  `data.Now` はデータを受け取った直後の ROS の時刻（Gazebo・録画の再生は MATLAB のノードの `use_sim_time` を true にして `/clock`）で、`myplotResult` の
+  `LiDAR_age` が点群の古さ。録画の再生 → 自己位置推定 → MATLAB → 図・動画は localization_tools の `matlab/replay_matlab.sh`（ホストで実行。`dev_log.md` の 65））：ekf_localizer が
   `/localization/base_pose`（`base_pose_rate` 50 Hz。`publish_trigger` とは別のタイマーで、現在時刻まで予測した map → base（後輪の間の中心）。
   観測が `max_predict_dt` 0.2 s より長く途切れるとそれ以上進まない）、`/localization/vlp16_pose`（NDT で更新した直後の map → LiDAR、
   `/tf_ndt_update` と同じ状態、stamp は点群の取得時刻）、`/localization/vlp16_points`（vlp16_pose の直後に同じ stamp の点群をそのまま出し直す）を出す。
