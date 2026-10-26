@@ -349,7 +349,7 @@ Gazebo を `auto` で走らせると、受信した時刻 − stamp は点群 �
 ## robot_localization（廃止、2026-10-15、ユーザー指示）
 
 - robot_localization（2 段 EKF。NDT を base に直す `robot_localization_adapter.py` を挟む）を `estimator:=robot_localization` で
-  切り替えて比べていた（2026-10-11〜13、`dev_log.md` の 1〜23）。同じ設定（R・Q・`/ekf_pose` を timer で出す）で Gazebo の 6 つの動きを
+  切り替えて比べていた（2026-10-11〜13、`dev_log.md` の 1〜23）。同じ設定（R・Q・`/ekf_pose` を当時の `publish_trigger: timer` で出す）で Gazebo の 6 つの動きを
   再生して比べると、加減速・スラローム・後退・停止はほぼ同じ、その場の回転（yaw 0.21 対 0.32°）と曲線（0.13 対 0.16°）は
   ekf_localizer のほうが良かった（`dev_log.md` の 23）ので、ekf_localizer だけにした。
 - 消したもの：localization_bringup の切り替え・adapter・`robot_localization.yaml`（コードは `robot_localization` ブランチの 23767ee に残る）、
@@ -366,7 +366,7 @@ Gazebo を `auto` で走らせると、受信した時刻 − stamp は点群 �
 - NDT 単体との比較（同じ録画の再生、`results/axes_*.png`）：NDT 単体の `/ndt_pose` は yaw の誤差が小さく切り替え時も跳ねないが、
   点群の stamp から平均約 50 ms・最大 165 ms 遅れて 10 Hz で届き、止まっていても y が ±3 cm 程度ばたつく。
   NDT の位置合わせは動いている間 平均 35〜41 ms・最大 120〜150 ms（止まっていると約 15〜20 ms）。EKF 使用時は NDT が
-  TF（点群の時刻）を待つので、`/ndt_pose` の遅れは ekf_localizer（timer 20 Hz）で平均 68 ms。
+  TF（点群の時刻）を待つので、`/ndt_pose` の遅れは ekf_localizer（当時の `publish_trigger: timer` 20 Hz。今は `predict_rate` 50 Hz）で平均 68 ms。
   ekf_localizer の `/ekf_pose` の遅れは約 0 ms（stamp が配信時刻の予測値）。
 - **オドメトリの R**（`scripts/odom_covariance.py`）：`use_ekf:=true` のとき、オドメトリは `odom_covariance` で
   R_v = R0 + a0·v² + a1·ω²、R_ω = R0 + a2·v² + a3·ω²（Nav2 AMCL の odom_alpha と同じ考え方）の共分散を付けて
