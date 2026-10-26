@@ -1708,3 +1708,9 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   `/tf_ndt_update` が無く、RViz の購読は `/clock`・`/current_pose`・`/initial_map`・`/velodyne_points` だけ（`/ekf/pose` が無い）、`/tf` は約 49 Hz。
   `replay_outputs.py` → `plot_matlab_outputs.py`・`plot_prior_posterior.py` も動いた（事前推定値 − NDT の解は水平平均 2.4 mm、68 の後と同じ程度）。
   前の録画（`tfcmp_before_blue_1`）の `plot_prior_posterior.py` の値は変わらない。
+
+### 71. ekf_localizer の publish_tf をやめ、TF を常に配信する
+
+- 目的（ユーザー指示）：ekf_localizer の設定 `publish_tf` を廃止し、TF map → base を常に配信する（使い方は `use_ekf:=false` で ekf_localizer ごと止めるだけ。NDT の `publish_tf` は launch が `use_ekf` で決めるのでそのまま）。
+- やったこと：ekf_localizer の `publish_tf`（パラメータ・`ekf.yaml`・README・`docs/ekf_flow.md`）を消し、`publish` で毎回 `/tf` を出す。ほかのリポジトリの環境ファイル・候補に ekf_localizer の `publish_tf` は無かった。
+- 確かめたこと：ekf_localizer のテスト 32 個が通った。Gazebo で `env:=gazebo` を起動し、`tf2_echo map base_footprint` で TF が出ていること、起動ログに `publish_tf` が無いことを確かめた。
