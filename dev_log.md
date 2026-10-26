@@ -1676,3 +1676,19 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 ![同じ比較（実機 blue spin5、前は publish_trigger: cloud）](dev_log_images/tf_compare_blue_spin5.png)
 
 ![MATLAB の点群の古さ（実機 blue spin5 の再生、/velodyne_points と ros2tf）](dev_log_images/matlab_tf_lidar_age_blue_spin5.jpg)
+
+### 69. RViz も /tf をそのまま読む（/tf_ndt_update への付け替えをやめる）
+
+- 目的（ユーザー指示）：RViz の `/tf` を `/tf_ndt_update` に付け替えるのをやめ、MATLAB と同じく、点群と LiDAR の位置は点群の stamp の時刻の `/tf`
+  （ekf_localizer の 50 Hz の予測値の補間）、後輪間中心（視点）は最新の `/tf` で表示する。`/tf_ndt_update` は録画と評価のために出し続ける。
+- やったこと（localization_bringup）：`localization.launch.py` の RViz の付け替え（53 で足したもの）を消した。RViz の設定は変えていない
+  （PointCloud2 は点群の stamp の時刻の TF で Fixed Frame `map` に直し、視点の Target Frame `base_link` は最新の TF を使うのが RViz の標準の動き）。
+  環境ファイルの `tf_ndt_update` の説明、README、`docs/node_graph.md`（Gazebo・実機の図で ekf_localizer → RViz を `/tf` に、`/tf_static` → RViz を足した）。
+- 確かめたこと（`gazebo_spin5` を `ROS_DOMAIN_ID=99` で再生し、68 の再生と同じ環境ファイルの写しで RViz 付きで起動）：
+  - `/tf` の購読は 3 つ（NDT・ekf_localizer・RViz の transform listener）、`/tf_ndt_update` の購読は 0。
+  - RViz のログの「Message Filter dropping message」は 1 回だけで、最初の点群（ekf_localizer がまだ TF を出す前）。
+  - 回転中も点群は地図の壁に重なって表示された（`results/rviz/rviz_tf_gazebo_spin5.mp4`、localization_tools の `record_rviz.sh`）。
+  - 表示に使う値は 68 の事前推定値と同じなので、NDT で更新した直後の値との差は 68 の表のとおり（実機 blue の再生で水平平均 3.5・最大 23 mm、
+    yaw 最大 1.0°。yaw 1.0° は 10 m 先の点で約 18 cm）。53 で付け替えた理由（速度が変わる瞬間に点群がずれて見える）は、この大きさで戻る。
+
+![RViz の表示（Gazebo spin5 の再生、/tf をそのまま読む）：左に向いたときと、回転中の別の向き](dev_log_images/rviz_tf_gazebo_spin5_frames.png)
