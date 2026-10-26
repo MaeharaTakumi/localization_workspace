@@ -1692,3 +1692,19 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
     yaw 最大 1.0°。yaw 1.0° は 10 m 先の点で約 18 cm）。53 で付け替えた理由（速度が変わる瞬間に点群がずれて見える）は、この大きさで戻る。
 
 ![RViz の表示（Gazebo spin5 の再生、/tf をそのまま読む）：左に向いたときと、回転中の別の向き](dev_log_images/rviz_tf_gazebo_spin5_frames.png)
+
+### 70. /tf_ndt_update と RViz の EKFPose（/ekf/pose）をやめる
+
+- 目的（ユーザー指示）：使っていないトピック `/tf_ndt_update`（69 で RViz が使わなくなった）と `/ekf/pose`（RViz の EKFPose の表示。配信するノードが無い）をやめる。
+- やったこと：
+  - ekf_localizer：`publish_ndt_update_tf` と `tf_ndt_update` を出す処理を消した（`ekf.yaml`・README・`docs/ekf_flow.md` も）。
+    `LaggedEkf::stateAfter`（NDT を入れた直後の状態）は単体テスト（`test_lagged_ekf`）とともに残した。
+  - lidar_localization：`rviz/localization2.rviz` から EKFPose の表示を消した。
+  - localization_bringup：環境ファイル 4 つから `tf_ndt_update` と RViz の `/ekf/pose` を消した。`docs/node_graph.md`。
+  - localization_tools：`drive/config` の録るトピックと `eval/replay_outputs.py` から `/tf_ndt_update` を外した。`plot_matlab_outputs.py`・`plot_prior_posterior.py` は
+    `/tf_ndt_update` のある古い録画（53〜69）ではそのまま差を描く。`plot_prior_posterior.py` は取付を `/tf_static` をたどって求めるようにした
+    （直接 base → velodyne が無い Gazebo の録画で落ちていた。前からのこと）。
+- 確かめたこと：ekf_localizer のテスト 32 個が通った。`gazebo_spin5` を `ROS_DOMAIN_ID=99` で再生し RViz 付きで起動して、トピックの一覧に
+  `/tf_ndt_update` が無く、RViz の購読は `/clock`・`/current_pose`・`/initial_map`・`/velodyne_points` だけ（`/ekf/pose` が無い）、`/tf` は約 49 Hz。
+  `replay_outputs.py` → `plot_matlab_outputs.py`・`plot_prior_posterior.py` も動いた（事前推定値 − NDT の解は水平平均 2.4 mm、68 の後と同じ程度）。
+  前の録画（`tfcmp_before_blue_1`）の `plot_prior_posterior.py` の値は変わらない。
