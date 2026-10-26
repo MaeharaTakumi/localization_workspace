@@ -1627,3 +1627,52 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   実機の PC でも、MATLAB が同じ PC の UDP で `/localization/vlp16_points` を受けるので、同じ設定にしておくのがよい。
 
 ![受信バッファ 208 kB（上）と 8 MB（下）の、実機 blue の録画の再生での MATLAB の点群の古さ・新しい組の間隔・軌跡](dev_log_images/replay_blue_spin5_buffer_compare.png)
+
+### 68. publish_trigger と MATLAB 用の 3 つの出力をやめ、/tf（50 Hz）を MATLAB が ros2tf で引く
+
+- 目的（ユーザー指示）：ekf_localizer の `publish_trigger` をやめて決まった周期で `/tf` を出し、`/localization/base_pose`・`vlp16_pose`・`vlp16_points` を
+  やめる。MATLAB は `/velodyne_points` をそのまま使い、後輪間中心は最新の `/tf`、LiDAR の位置は点群の stamp の時刻の `/tf` と `/tf_static` で求める。
+- 決めたこと（ユーザーが選んだ）：周期は `predict_rate` 50 Hz（オドメトリと同じ。点群は stamp から約 15 ms で届くので待っても 5 ms ほど。
+  Gazebo の `/clock` は 10 ms 刻みなので 100 Hz が上限）。`/tf_ndt_update`（RViz）は残す。MATLAB は点群の stamp の時刻の TF がまだ無ければ待たずに
+  前の組を使い、次の周期に引き直す。確かめに使うプログラムは新しい形に書き直す。前後は Gazebo と実機 blue を 4 回ずつ再生して比べる。
+- やったこと：
+  - ekf_localizer：`publish_trigger`（`cloud`・`update`）、`base_pose_rate`・`publish_vlp16_pose`・`publish_vlp16_points` と点群を持っておく処理を消し、
+    `predict_rate`（`ekf.yaml` 20 → 50 Hz）のタイマーだけで TF・`/ekf_pose`・`/ekf_odom` を出す。点群は `time_source: receipt` のときだけ購読する。README・`docs/ekf_flow.md`。
+  - localization_bringup：環境ファイル 4 つから `publish_trigger`（実機 `cloud`、Gazebo `update`）と 3 つのトピックを消した。`docs/node_graph.md`。
+  - whill_common_matlab（`cr_debug`）：`ROS2CommManager` が `ros2tf` を作って `SensorFetcher.setTfTree` で渡す。sensor(1) は `/velodyne_points`、
+    sensor(5)（Matching）は最新の map → base（Gazebo `base_footprint`、実機 `base_link`）、sensor(8) は点群の stamp の時刻の map → velodyne
+    （`canTransform` で確かめてから `getTransform`。引けなければ `data.LIDAR_waiting`）。`LIDAR_pose` から共分散が無くなった。
+  - localization_tools：`eval/replay_outputs.py` は `/tf`・`/tf_static`・`/tf_ndt_update`・`/ndt_pose`・`/ekf_pose`・`/localization_debug` を録る。
+    `plot/plot_matlab_outputs.py` を書き直した（`/tf` の周期、点群の stamp より後の TF が届くまでの時間、点群の stamp の時刻の `/tf`（補間）に取付を
+    掛けた事前推定値と NDT の解・NDT で更新した直後の値・真値の差。`compare` で前後の表と分布の図）。`plot_prior_posterior.py` は `/tf` を補間して引く。
+    `check_cr_debug*.m`・`plot_cr_debug_pairs.py`、`drive/config` の録るトピック（3 つの代わりに `/tf_ndt_update`）、README。
+- 結果：ekf_localizer のテスト 32 個が通った。`gazebo_spin5`・`blue_spin5` を変える前（Gazebo は update、実機は cloud）と後（50 Hz）で 4 回ずつ再生した
+  （平均、括弧は 4 回の幅。実機の録画の再生は 8 MB の受信バッファ）：
+
+  | | Gazebo 前 | Gazebo 後 | blue 前 | blue 後 |
+  |---|---|---|---|---|
+  | `/tf` の周期 | 50 Hz（オドメトリの時刻） | 50 Hz | 19.8 Hz（点群の stamp） | 50 Hz |
+  | 点群の stamp より後の TF が届くまで | 平均 10.7・最大 26.7 ms | 10.2・25.4 ms | 15.5・22.5 ms | 10.2・22.4 ms |
+  | NDT の解（点群の stamp から） | 平均 45.8 ms（42〜54） | 37.4 ms | 40.0 ms | 40.9 ms |
+  | 事前推定値 − NDT の解（水平） | 平均 7.0（6.0〜7.4）・最大 99 mm | 2.2（1.7〜3.2）・95 mm | 3.53・18.2 mm | 3.72・23.8（18〜29）mm |
+  | 事前推定値 − NDT の解（yaw） | 平均 0.17・最大 4.0° | 0.09・3.2° | 0.05・0.71° | 0.06・1.02° |
+  | 事前推定値 − NDT で更新した直後の値（水平） | 平均 6.9・最大 98 mm | 1.5・65 mm | 3.35・17.6 mm | 3.54・23.2 mm |
+
+  - Gazebo の真値との差（`compare_run.py eval`、`/ekf_pose` の stamp の時刻）：xy 6.0 → 2.5 mm、z 10.3 → 7.1 mm、yaw 平均 0.23 → 0.18°、
+    切り替え時の yaw 1.01 → 0.88°、実時間の yaw 0.70 → 0.61°。MATLAB が点群に使う事前推定値の真値との差は yaw 0.22 → 0.18°
+    （水平は地図と Gazebo の座標のずれ約 45 mm を含む）。Gazebo は良くなった。
+  - 実機 blue は少し悪くなった（事前推定値 − NDT の解の平均 +5 %、最大 18 → 24 mm・yaw 0.71 → 1.02°）。cloud は点群が届いた時点（stamp から約 15 ms）で、
+    それまでのオドメトリを入れて点群の時刻の値を計算していたが、50 Hz の TF はその時刻に出した予測値の補間なので、使える情報が少ない。
+    点群の stamp の時刻の TF が引けるのは約 5 ms 早くなった。cloud の前の再生は 4 回とも同じ値だった（決まった順で処理される）。
+  - MATLAB（`matlab/replay_matlab.sh`、`ros2tf`）：
+    Gazebo は 2430 周期で新しい組 1025（点群の stamp と姿勢の stamp は全部一致）、TF を待った周期 145、点群の古さは新しい組で平均 31.6 ms
+    （67 の vlp16_points のころは 59.3 ms）。実機 blue は 1854 周期で新しい組 1485（67 は 1433）、待った周期 5、点群の古さ 46.4 ms（67 は 65.2 ms）。
+    新しい組の間隔が中央値の 1.5 倍を超えたのは blue で 28 回（67 は 72 回。MATLAB の 1 周期に点群が 2 個届いて上書きされたもの）。
+    図・動画も前と同じく作れた（`results/matlab_outputs/replay_tf_*`）。
+- 気づいたこと：確かめる前に、コンテナ `test` で動いていたユーザーの自己位置推定（env:=gazebo、RViz 付き）をユーザーの許可を得て止めた（起動し直していない）。
+
+![MATLAB が /tf から引く値の前後（Gazebo spin5、4 回ずつ）：点群の stamp より後の TF が届くまでの時間、事前推定値 − NDT の解](dev_log_images/tf_compare_gazebo_spin5.png)
+
+![同じ比較（実機 blue spin5、前は publish_trigger: cloud）](dev_log_images/tf_compare_blue_spin5.png)
+
+![MATLAB の点群の古さ（実機 blue spin5 の再生、/velodyne_points と ros2tf）](dev_log_images/matlab_tf_lidar_age_blue_spin5.jpg)

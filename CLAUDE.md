@@ -118,7 +118,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 - **Gazebo コンテナ `20261002`（8843520b410f）のファイルは、ユーザーの許可なしに編集しない**（読むのは可）。
   問題を Gazebo 側の設定変更で解決しない。
 - **既存の自作 EKF（`ekf_localizer`）とその起動方法を壊さない。** `ekf_localizer` リポジトリは**ユーザーが指示したときだけ**変更する
-  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した）。
+  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした）。
   （robot_localization に切り替える機能は 2026-10-15 にユーザー指示で廃止した。下の「robot_localization（廃止）」）
 - **曖昧な点は自分で判断せず、必ずユーザーに質問する。**
 - **作業がひと区切りついたら（動作を確かめ、開発ログ・README を直したら）、確認を取らずに commit して push する**（2026-10-16、ユーザー指示。
@@ -256,31 +256,32 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   **点群の取得時刻**の map→LiDAR を TF から引いて NDT の初期値にする（`tf_init_guess_timeout` 0.05 s。引けなければ前回の解）。
   推定器は map→base の TF を、点群時刻を含む範囲で出し続ける必要がある。
 - **`/ndt_pose`**：map→**LiDAR** の姿勢（base ではない）、stamp は点群の取得時刻、**共分散は未設定（0）**。
-- **`/ekf_pose`**（MATLAB が制御と点群の座標変換に使う）：map→**LiDAR**、`PoseWithCovarianceStamped`、
-  reliable + transient_local、KeepLast(1)。`ekf_localizer` は `publish_trigger` で `timer`（現在時刻まで予測）か
-  `cloud`（点群の stamp の時刻）を選ぶ（実機の `red.yaml` などは `cloud`）。
-- **RViz の点群**（2026-10-19、`dev_log.md` の 53）：`/velodyne_points` は点群の stamp の時刻の TF（ekf_localizer の予測値。`publish_trigger: cloud`）でmap に直されるので、NDT の解ではない。ユーザー指示で、ekf_localizer が NDT で更新した直後の値（点群の時刻の事後推定値）を TF map → base として `/tf_ndt_update`（`publish_ndt_update_tf`、`LaggedEkf::stateAfter`）に出し、launch が RViz の `/tf` を `/tf_ndt_update` に付け替えて、RViz 側で点群を変換する（`use_ekf:=true` のとき。`/tf` は予測値のまま。NDT の初期値に使うので変えない）。NDT が解かなかった点群は前後の更新値の補間で表示される。予測値との差は実機 blue で 10 m 先の点が平均 3〜4 cm・速度が変わる瞬間に最大 0.3〜0.5 m、更新値と NDT の解の差は blue の小さい R_ndt では 0.2 mm・0.01° 未満（`plot/plot_prior_posterior.py`、`dev_log.md` の 53・54。NDT の解で直した点群 `/aligned_points` を出す版（53）は 54 でやめた）。RViz の既定の視点は `TopDownOrtho`・Target Frame `base_link`（自車両を中心に真上から、向きは地図で固定。2026-10-19、ユーザー指示。`dev_log.md` の 55）。RViz の画面は localization_tools の `record_rviz.sh`（ホストで実行。RViz の窓を探して ffmpeg の x11grab `-window_id` で録る。コンテナに ffmpeg は無い。`dev_log.md` の 56）で録画する。RViz2 は設定ファイルの `Hide Left Dock`・`Hide Right Dock` を起動時に効かせない（欄を出さずに録るときは、録画用の設定の写しから Displays・Views などのパネルを除く）。rviz2 は SIGINT で終わらないことがあるので、止まらなければ SIGKILL（`dev_log.md` の 57）。
-- **MATLAB 用の出力**（2026-10-23、ユーザー指示。`dev_log.md` の 61・62。MATLAB の CR_debug は 2026-10-26 から sensor(1) で
-  `vlp16_points`、sensor(5)（Matching）で `base_pose` を `Plant` に、新しく足した sensor(8) で `vlp16_pose` を購読し、`SensorFetcher` が stamp で組にして
-  `data.LIDAR`・`data.LIDAR_pose`・`data.LIDAR_new` に入れる。sensor(8) を書いていない main では false として動く。記録の図 `+plotter/myplotResult.m` は
-  `Position`・`Angle`（Plant）、`Position_LiDAR`・`Angle_LiDAR`・`Trajectory`・`LiDAR_pair_interval`（`dev_log.md` の 63）。点群地図と取得点群の動画は
-  `+plotter/myplotPointCloudVideo.m`（点群は同じ stamp の `LIDAR_pose` で直す。車両中心（後輪間中心）は黒い点。main.m の `makeVideo`・`mapFile`。`dev_log.md` の 64・65）。
-  `data.Now` はデータを受け取った直後の ROS の時刻（Gazebo・録画の再生は MATLAB のノードの `use_sim_time` を true にして `/clock`）で、`myplotResult` の
-  `LiDAR_age` が点群の古さ。録画の再生 → 自己位置推定 → MATLAB → 図・動画は localization_tools の `matlab/replay_matlab.sh`（ホストで実行。`dev_log.md` の 65））：ekf_localizer が
-  `/localization/base_pose`（`base_pose_rate` 50 Hz。`publish_trigger` とは別のタイマーで、現在時刻まで予測した map → base（後輪の間の中心）。
-  観測が `max_predict_dt` 0.2 s より長く途切れるとそれ以上進まない）、`/localization/vlp16_pose`（NDT で更新した直後の map → LiDAR、
-  `/tf_ndt_update` と同じ状態、stamp は点群の取得時刻）、`/localization/vlp16_points`（vlp16_pose の直後に同じ stamp の点群をそのまま出し直す）を出す。
-  どれも PoseWithCovarianceStamped / PointCloud2、reliable。NDT が遅れたときに予測値で代わりに出すことはしない（ユーザーが一番単純な方法を選んだ）。
-  購読側は 2 つの stamp が同じときだけ組にする（届く順は入れ替わることがある。Gazebo の再生で 1040 個中 259 個は点群が先）。
+- **`/tf`・`/ekf_pose` の出し方**（2026-10-26 から、ユーザー指示。`dev_log.md` の 68）：ekf_localizer は `predict_rate`（50 Hz）の周期で、最新の状態を
+  現在時刻まで予測した TF map → base・`/ekf_pose`（map→**LiDAR**、`PoseWithCovarianceStamped`、reliable + transient_local、KeepLast(1)）・
+  `/ekf_odom` を出す。NDT の初期値と MATLAB はこの `/tf` を点群の stamp で引く（tf2 が前後の 2 つを補間）。`publish_trigger`（`timer`・`cloud`（実機）・
+  `update`（Gazebo））はやめた。それより前の録画の `/tf` は、実機は点群の stamp ちょうどの予測値、Gazebo は更新するたびの事後推定値。
+- **RViz の点群**（2026-10-19、`dev_log.md` の 53）：`/velodyne_points` は点群の stamp の時刻の TF（ekf_localizer の予測値）でmap に直されるので、NDT の解ではない。ユーザー指示で、ekf_localizer が NDT で更新した直後の値（点群の時刻の事後推定値）を TF map → base として `/tf_ndt_update`（`publish_ndt_update_tf`、`LaggedEkf::stateAfter`）に出し、launch が RViz の `/tf` を `/tf_ndt_update` に付け替えて、RViz 側で点群を変換する（`use_ekf:=true` のとき。`/tf` は予測値のまま。NDT の初期値に使うので変えない）。NDT が解かなかった点群は前後の更新値の補間で表示される。予測値との差は実機 blue で 10 m 先の点が平均 3〜4 cm・速度が変わる瞬間に最大 0.3〜0.5 m、更新値と NDT の解の差は blue の小さい R_ndt では 0.2 mm・0.01° 未満（`plot/plot_prior_posterior.py`、`dev_log.md` の 53・54。NDT の解で直した点群 `/aligned_points` を出す版（53）は 54 でやめた）。RViz の既定の視点は `TopDownOrtho`・Target Frame `base_link`（自車両を中心に真上から、向きは地図で固定。2026-10-19、ユーザー指示。`dev_log.md` の 55）。RViz の画面は localization_tools の `record_rviz.sh`（ホストで実行。RViz の窓を探して ffmpeg の x11grab `-window_id` で録る。コンテナに ffmpeg は無い。`dev_log.md` の 56）で録画する。RViz2 は設定ファイルの `Hide Left Dock`・`Hide Right Dock` を起動時に効かせない（欄を出さずに録るときは、録画用の設定の写しから Displays・Views などのパネルを除く）。rviz2 は SIGINT で終わらないことがあるので、止まらなければ SIGKILL（`dev_log.md` の 57）。
+- **MATLAB が使う姿勢と点群**（2026-10-26、ユーザー指示。`dev_log.md` の 68。61〜67 は ekf_localizer の MATLAB 用の出力 `/localization/base_pose`・
+  `vlp16_pose`・`vlp16_points` を購読していたころで、それらはやめた）：MATLAB の CR_debug は sensor(1) で `/velodyne_points` をそのまま購読し、
+  `ros2tf`（`/tf`・`/tf_static` を C++ 側のバッファに既定 10 s 溜める）から、sensor(5)（Matching）は最新の map → base（後輪間中心。base は Gazebo が
+  `base_footprint`、実機が `base_link`）を `Plant` に、sensor(8) は点群の stamp の時刻の map → velodyne（事前推定値。NDT の初期値と同じ値）を
+  `data.LIDAR_pose` に入れる（`ROS2CommManager` が `ros2tf` を作り `SensorFetcher.setTfTree` で渡す）。その時刻より後の TF がまだ無ければ待たずに前の組を使い
+  （`data.LIDAR_waiting`）、次の周期にその時点の最新の点群で引き直す（ユーザーが選んだ）。共分散は無い。sensor(8) を書いていない main では false として動く。
+  記録の図 `+plotter/myplotResult.m` は `Position`・`Angle`（Plant）、`Position_LiDAR`・`Angle_LiDAR`・`Trajectory`・`LiDAR_pair_interval`（`dev_log.md` の 63）。
+  点群地図と取得点群の動画は `+plotter/myplotPointCloudVideo.m`（点群は同じ stamp の `LIDAR_pose` で直す。車両中心（後輪間中心）は黒い点。main.m の
+  `makeVideo`・`mapFile`。`dev_log.md` の 64・65）。`data.Now` はデータを受け取った直後の ROS の時刻（Gazebo・録画の再生は MATLAB のノードの
+  `use_sim_time` を true にして `/clock`）で、`myplotResult` の `LiDAR_age` が点群の古さ。録画の再生 → 自己位置推定 → MATLAB → 図・動画は
+  localization_tools の `matlab/replay_matlab.sh`（ホストで実行。`dev_log.md` の 65）。
   NDT の解は実機 blue の走行中で点群が届いてから平均 34 ms（50 ms 以内 99.4 %）、Gazebo で平均 37〜43 ms。
-  確かめるのは localization_tools の `eval/replay_outputs.py`（録画全体を再生して出力を録る）と `plot/plot_matlab_outputs.py`。
+  確かめるのは localization_tools の `eval/replay_outputs.py`（録画全体を再生して `/tf` などを録る）と `plot/plot_matlab_outputs.py`（`/tf` の周期、
+  点群の stamp より後の TF が届くまでの時間、事前推定値と NDT の解・NDT で更新した直後の値・真値の差。`compare` で前後を比べる）。
   実機の録画をコンテナの中で再生すると大きい点群が受け手の側で落ちる（blue で NDT が解くのは半分ほど。出力を止めても、0.5 倍の速さでも同じ）。
   原因（`dev_log.md` の 66）：ROS 2 は 127.0.0.1 の UDP だけ（共有メモリなし）で、ソケットの受信バッファが 208 kB（`net.core.rmem_max` も同じ）。
   314 kB の実機の点群は断片があふれ、best effort の受け手（NDT・ekf_localizer・Gazebo モードの MATLAB）は約半分を失う（reliable は再送で全部届く。
   151 kB の Gazebo の点群は 98 % 届く）。**2026-10-26 にユーザーがホストで `net.core.rmem_max`・`rmem_default` を 8388608（8 MB）にし、
   再生でも全部届くようになった**（NDT が解くのは 1515 / 1527 で走行中と同じ程度。`dev_log.md` の 67）。`sysctl -w` なので再起動で戻る
   （`/etc/sysctl.d/` には書いていない）。sudo は Claude Code の中のシェルからは動かない（no new privileges）ので、ユーザーがアプリの外の端末で行う。
-  実機の MATLAB が受ける `/localization/vlp16_points` も同じ PC の UDP なので、実機の PC でも同じ設定にする。
+  実機の MATLAB は `/velodyne_points` を UDP で受けるので、実機の PC でも同じ設定にする。
 - **`/initialpose`** は NDT が **LiDAR の姿勢**として扱う（RViz の 2D Pose Estimate は z=0）。
 - **ekf_localizer の予測**（`src/ekf_core.cpp` の `propagate`、2026-10-12 から）：水平面を移動すると仮定した中点法（RK2）。
   yaw_m = yaw + omega dt/2、x += v dt cos(yaw_m)、y += v dt sin(yaw_m)、yaw += omega dt。roll, pitch による v, omega の分解はしない。
@@ -295,8 +296,8 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   `publish_trigger: update`（NDT・オドメトリで更新するたびに、その時刻の事後推定値を TF・`/ekf_pose` に出す）を追加。
   `receipt` はオドメトリを受信した時刻、NDT はその点群（`points_topic`）を受信した時刻にする（ekf_localizer が点群も受け取って stamp ごとに
   覚える）。`/ndt_pose` の受信時刻にすると NDT の計算の遅れ（56〜67 ms）で大きく悪化した（スコア 6.9）。
-  **Gazebo（`gazebo.yaml`）は `publish_trigger: update`**（時刻は stamp）。再生で timer と同じか少し良く、ばらつきが小さい
-  （6 回 0.91〜1.02、timer 4 回 0.95〜1.19）。receipt + update は 1.03（`dev_log.md` の 20・21）。
+  Gazebo（`gazebo.yaml`）は 2026-10-26 まで `publish_trigger: update`（時刻は stamp）。再生で timer（20 Hz）と同じか少し良く、ばらつきが小さかった
+  （6 回 0.91〜1.02、timer 4 回 0.95〜1.19）。receipt + update は 1.03（`dev_log.md` の 20・21）。`publish_trigger` は 2026-10-26 にやめた（上の「`/tf`・`/ekf_pose` の出し方」）。
 - **オドメトリ**：使うのは `twist.linear.x`・`twist.angular.z`。Gazebo は diff_drive_controller の odom を `gazebo_bridge` が
   中継する `/wheelchair/odom`（50 Hz、best effort、**共分散 0**）、実機は `whill_odometry`（共分散あり）。Gazebo の速度は
   2026-10-12 から移動平均なし（`velocity_rolling_window_size: 1`）。**それより前の録画は 0.2 s の移動平均で約 0.1 s 遅れている**
