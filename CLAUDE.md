@@ -260,7 +260,7 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
 - **`/tf`・`/ekf_pose` の出し方**（2026-10-26 から、ユーザー指示。`dev_log.md` の 68）：ekf_localizer は `predict_rate`（50 Hz）の周期で、最新の状態を
   現在時刻まで予測した TF map → base・`/ekf_pose`（map→**LiDAR**、`PoseWithCovarianceStamped`、reliable + transient_local、KeepLast(1)）・
   `/ekf_odom` を出す。NDT の初期値と MATLAB はこの `/tf` を点群の stamp で引く（tf2 が前後の 2 つを補間）。`publish_trigger`（`timer`・`cloud`（実機）・
-  `update`（Gazebo））はやめた。**`tf_future_steps`（F）が 1 以上なら**（2026-10-27、ユーザー指示。既定 0、環境ファイルは 0 のまま）、`/tf` の stamp を周期の刻み k·T
+  `update`（Gazebo））はやめた。**`tf_future_steps`（F）が 1 以上なら**（2026-10-27、ユーザー指示。既定 0。環境ファイル gazebo・red・blue・white は 2026-10-27 にユーザー指示で F = 2・P = 1）、`/tf` の stamp を周期の刻み k·T
   （整数のナノ秒）にそろえ、毎周期、今以前の最後の刻み k0 から k0 − `tf_past_steps` + 1 〜 k0 + F の刻みを `LaggedEkf::at` の値で 1 メッセージにまとめて送り、
   同じ刻みは送り直して置き換える（tf2・MATLAB の `ros2tf` は同じ stamp を後から届いた値で置き換え、前の stamp も差し込む。確認済み）。F 2・P 1 で、
   点群が届いた時点で TF が揃っていなかった割合は Gazebo 90 → 0 %・blue 27 → 0 %、MATLAB の待った周期も 0、事前推定値の精度は同じ程度。最新を引く側には

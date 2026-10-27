@@ -1757,3 +1757,12 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 ![TF の刻みで先まで送ったときの比較（Gazebo spin5）：点群の stamp からその後の TF が届くまで、事前推定値 − NDT の解](dev_log_images/tfgrid_gazebo_spin5.png)
 
 ![同じ比較（実機 blue spin5）](dev_log_images/tfgrid_blue_spin5.png)
+
+### 73. 環境ファイルを tf_future_steps 2・tf_past_steps 1 にした
+
+- 目的：72 の刻みの TF を運用で使う（ユーザー指示）。
+- やったこと：localization_bringup の `param/env/{gazebo,red,blue,white}.yaml` の `parameters.ekf_localizer` に `tf_future_steps: 2`・`tf_past_steps: 1`。
+  `ekf.yaml` の既定は 0 のまま（環境ファイルを使わない起動は今まで通り）。
+- 結果：4 つの環境ファイルで launch し（`ROS_DOMAIN_ID=99`）、`ros2 param get` で 2・1、起動ログに
+  「ekf TF on the 0.020000 s grid: 2 future step(s), 1 past step(s) resent」が出ることを確かめた。再生の結果は 72 の F2・P1 の列。
+  実機での走行はまだ確かめていない。
