@@ -119,7 +119,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 - **Gazebo コンテナ `20261002`（8843520b410f）のファイルは、ユーザーの許可なしに編集しない**（読むのは可）。
   問題を Gazebo 側の設定変更で解決しない。
 - **既存の自作 EKF（`ekf_localizer`）とその起動方法を壊さない。** `ekf_localizer` リポジトリは**ユーザーが指示したときだけ**変更する
-  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした。続けて `/tf_ndt_update`（`publish_ndt_update_tf`）もやめ、`publish_tf` もやめて TF を常に配信するようにした）。
+  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした。続けて `/tf_ndt_update`（`publish_ndt_update_tf`）もやめ、`publish_tf` もやめて TF を常に配信するようにした。2026-10-27：TF を周期の刻みの stamp で先の刻みまで送る `tf_future_steps`・`tf_past_steps` を足した（既定 0 で今と同じ。`dev_log.md` の 72））。
   （robot_localization に切り替える機能は 2026-10-15 にユーザー指示で廃止した。下の「robot_localization（廃止）」）
 - **曖昧な点は自分で判断せず、必ずユーザーに質問する。**
 - **作業がひと区切りついたら（動作を確かめ、開発ログ・README を直したら）、確認を取らずに commit して push する**（2026-10-16、ユーザー指示。
@@ -260,7 +260,12 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
 - **`/tf`・`/ekf_pose` の出し方**（2026-10-26 から、ユーザー指示。`dev_log.md` の 68）：ekf_localizer は `predict_rate`（50 Hz）の周期で、最新の状態を
   現在時刻まで予測した TF map → base・`/ekf_pose`（map→**LiDAR**、`PoseWithCovarianceStamped`、reliable + transient_local、KeepLast(1)）・
   `/ekf_odom` を出す。NDT の初期値と MATLAB はこの `/tf` を点群の stamp で引く（tf2 が前後の 2 つを補間）。`publish_trigger`（`timer`・`cloud`（実機）・
-  `update`（Gazebo））はやめた。それより前の録画の `/tf` は、実機は点群の stamp ちょうどの予測値、Gazebo は更新するたびの事後推定値。
+  `update`（Gazebo））はやめた。**`tf_future_steps`（F）が 1 以上なら**（2026-10-27、ユーザー指示。既定 0、環境ファイルは 0 のまま）、`/tf` の stamp を周期の刻み k·T
+  （整数のナノ秒）にそろえ、毎周期、今以前の最後の刻み k0 から k0 − `tf_past_steps` + 1 〜 k0 + F の刻みを `LaggedEkf::at` の値で 1 メッセージにまとめて送り、
+  同じ刻みは送り直して置き換える（tf2・MATLAB の `ros2tf` は同じ stamp を後から届いた値で置き換え、前の stamp も差し込む。確認済み）。F 2・P 1 で、
+  点群が届いた時点で TF が揃っていなかった割合は Gazebo 90 → 0 %・blue 27 → 0 %、MATLAB の待った周期も 0、事前推定値の精度は同じ程度。最新を引く側には
+  (F − 1)·T 〜 F·T 先の予測が渡る。P ≥ 2 だと遅れて届いた NDT が過去の刻みに入り、点群の stamp で引く値が引く時刻で変わる（`dev_log.md` の 72）。
+  再生でパラメータを変えるのは `replay_outputs.py`・`replay_matlab.sh` の環境変数 `PARAMS`、同じ stamp の `/tf` は `plot_matlab_outputs.py --input` で確かめる。それより前の録画の `/tf` は、実機は点群の stamp ちょうどの予測値、Gazebo は更新するたびの事後推定値。
 - **RViz の点群**（2026-10-19、`dev_log.md` の 53）：`/velodyne_points` は点群の stamp の時刻の TF（ekf_localizer の予測値）でmap に直されるので、NDT の解ではない。ユーザー指示で、ekf_localizer が NDT で更新した直後の値（点群の時刻の事後推定値）を TF map → base として `/tf_ndt_update`（`publish_ndt_update_tf`、`LaggedEkf::stateAfter`）に出し、2026-10-19〜26 は launch が RViz の `/tf` を `/tf_ndt_update` に付け替えていた。**2026-10-26 にユーザー指示で付け替えをやめ**、RViz は MATLAB と同じく `/tf` をそのまま読む（点群はその stamp の時刻の予測値の補間、視点の Target Frame `base_link` は最新の値。`dev_log.md` の 69）。続けてユーザー指示で `/tf_ndt_update` と、配信するノードの無かった RViz の EKFPose（`/ekf/pose`。lidar_localization の `rviz/localization2.rviz`）もやめた（`dev_log.md` の 70。`LaggedEkf::stateAfter` はテストとともに残す）。予測値との差は実機 blue で 10 m 先の点が平均 3〜4 cm・速度が変わる瞬間に最大 0.3〜0.5 m、更新値と NDT の解の差は blue の小さい R_ndt では 0.2 mm・0.01° 未満（`plot/plot_prior_posterior.py`、`dev_log.md` の 53・54。NDT の解で直した点群 `/aligned_points` を出す版（53）は 54 でやめた）。RViz の既定の視点は `TopDownOrtho`・Target Frame `base_link`（自車両を中心に真上から、向きは地図で固定。2026-10-19、ユーザー指示。`dev_log.md` の 55）。RViz の画面は localization_tools の `record_rviz.sh`（ホストで実行。RViz の窓を探して ffmpeg の x11grab `-window_id` で録る。コンテナに ffmpeg は無い。`dev_log.md` の 56）で録画する。RViz2 は設定ファイルの `Hide Left Dock`・`Hide Right Dock` を起動時に効かせない（欄を出さずに録るときは、録画用の設定の写しから Displays・Views などのパネルを除く）。rviz2 は SIGINT で終わらないことがあるので、止まらなければ SIGKILL（`dev_log.md` の 57）。
 - **MATLAB が使う姿勢と点群**（2026-10-26、ユーザー指示。`dev_log.md` の 68。61〜67 は ekf_localizer の MATLAB 用の出力 `/localization/base_pose`・
   `vlp16_pose`・`vlp16_points` を購読していたころで、それらはやめた）：MATLAB の CR_debug は sensor(1) で `/velodyne_points` をそのまま購読し、

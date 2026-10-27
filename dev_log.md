@@ -1714,3 +1714,46 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 - 目的（ユーザー指示）：ekf_localizer の設定 `publish_tf` を廃止し、TF map → base を常に配信する（使い方は `use_ekf:=false` で ekf_localizer ごと止めるだけ。NDT の `publish_tf` は launch が `use_ekf` で決めるのでそのまま）。
 - やったこと：ekf_localizer の `publish_tf`（パラメータ・`ekf.yaml`・README・`docs/ekf_flow.md`）を消し、`publish` で毎回 `/tf` を出す。ほかのリポジトリの環境ファイル・候補に ekf_localizer の `publish_tf` は無かった。
 - 確かめたこと：ekf_localizer のテスト 32 個が通った。Gazebo で `env:=gazebo` を起動し、`tf2_echo map base_footprint` で TF が出ていること、起動ログに `publish_tf` が無いことを確かめた。
+
+## 2026-10-27
+
+### 72. TF を周期の刻みの stamp で先まで送る（ekf_localizer の tf_future_steps・tf_past_steps）
+
+- 目的（ユーザー指示）：NDT・MATLAB・RViz が点群の stamp の時刻の TF を、待たずに必ず引けるようにする。今の TF は stamp が今の時刻なので、
+  点群の stamp より後の TF が届くまで（stamp から平均約 10 ms・最大約 25 ms。68）、NDT は待ち、MATLAB は前の組で代えていた。
+- 先に確かめたこと：同じ stamp の TF を後から送ると、tf2（コンテナの Humble。NDT・RViz と同じ BufferCore）でも、ホストの MATLAB R2026a の `ros2tf` でも、
+  後から届いた値で置き換わる。前の stamp の TF も後から差し込まれて補間に使われ、1 つのメッセージに入れた複数の stamp も別々に溜まる。
+  最新より後の時刻は引けず、時刻を指定しない最新は stamp が一番大きいもの。違う stamp で「今」と「未来」を混ぜると、古い予測が補間に混ざる。
+- やったこと（ユーザーと決めた設計）：
+  - ekf_localizer：パラメータ `tf_future_steps`（F）・`tf_past_steps`（P）（既定 0 で今と同じ）。F ≥ 1 なら、TF の stamp を周期 T = 1 / `predict_rate`
+    の刻み k·T（整数のナノ秒。`tf_grid.hpp` の `tfGridStamps`）にそろえ、毎周期、今以前の最後の刻み k0 について k0 − P + 1 〜 k0 + F の刻みを
+    1 つの `/tf` メッセージで送る。値は `LaggedEkf::at(k·T)`（その刻み以前の観測を入れた状態をその刻みまで予測した値。ロールバックの処理は前からある）。
+    同じ刻みは周期ごとに送り直して置き換える。初期化より前と履歴の起点より前の刻みは送らない。`/ekf_pose`・`/ekf_odom` は今まで通り今の時刻の 1 個。
+    タイマーの周期も同じ整数のナノ秒にした。P·T が `history_length` 以上なら縮め、F + P が 10 を超えたら警告する（1 フレームに収める目安）。
+  - localization_tools：`eval/replay_outputs.py`・`matlab/replay_matlab.sh` に環境変数 `PARAMS`（ノードのパラメータの上書き）。
+    `plot/plot_matlab_outputs.py` は同じ stamp の `/tf` を扱い（stamp ごとに最後の値。`--input <入力の録画>` で、点群が届いた時刻に購読側が持っていた値と、
+    点群が届いてから TF が揃うまでの時間 `tf_wait_receipt`・待った割合 `waited`）、比較の図の待ち時間は符号のまま描く。
+  - 環境ファイルは変えていない（F = 0。F・P を決めるのはユーザー）。
+- 結果：ekf_localizer のテスト 39 個が通った（`tfGridStamps` の 5 個と、`at` が初期化前・起点より前を見分けられることの 1 個を足した）。
+  `gazebo_spin5`・`blue_spin5` を今（F = 0）と F = 2・P = 1 で 1 回ずつ再生した（`replay_outputs.py`、MATLAB は `replay_matlab.sh`）。
+  `/tf` の stamp はすべて 20 ms の倍数で、1 メッセージに 3 個、各刻みを 3 回送っていた。
+
+  | | Gazebo 今 | Gazebo F2・P1 | blue 今 | blue F2・P1 |
+  |---|---|---|---|---|
+  | 点群の stamp → その後の TF が届く | 平均 10.2・最大 25.3 ms | −30.4・−19.7 ms | 10.3・24.7 ms | −26.7・−11.4 ms |
+  | 点群が届いた時点で TF が無かった割合 | 90 % | 0 %（最初の 2 個だけ） | 27 % | 0 %（最初の 1 個だけ） |
+  | NDT の解（点群の stamp から） | 平均 38.4 ms | 24.7 ms | 40.7 ms | 38.6 ms |
+  | 事前推定値 − NDT の解（水平） | 平均 3.3・最大 74 mm | 2.5・80 mm | 3.7・31 mm | 3.8・30 mm |
+  | 事前推定値 − NDT の解（yaw） | 平均 0.12・最大 2.9° | 0.10・3.0° | 0.06・1.2° | 0.06・1.2° |
+  | 事前推定値 − 真値（yaw） | 平均 0.20° | 0.19° | - | - |
+  | MATLAB：TF を待った周期（最初の組の後） | 127（全体 145） | 0（全体 19） | 5 | 0 |
+  | MATLAB：新しい組・その点群の古さ | 1025・31.6 ms | 1026・30.3 ms | 1485・46.4 ms | 1484・45.4 ms |
+
+  - 点群が届いた時点で、その stamp を挟む TF がもう揃っている（最初の 1 秒の EKF の初期化前を除く）。Gazebo は点群が stamp から約 2 ms で届くので、
+    今は NDT が約 8 ms 待っていて、それがなくなって NDT の解が約 14 ms 早くなった。blue は点群が約 15 ms で届くので、待つのは 27 % だった。
+  - 事前推定値の精度は今と同じ程度（1 回ずつなので差はばらつきの範囲）。P = 1 で過ぎた刻みを送り直すので、情報が古くならない。
+  - 最新を引く側（MATLAB の今の姿勢 `Plant`、RViz の視点）には 20〜40 ms 先の予測が渡る。MATLAB の図・動画は作れた（`results/matlab_outputs/replay_tfgrid_f2p1_*`）。
+
+![TF の刻みで先まで送ったときの比較（Gazebo spin5）：点群の stamp からその後の TF が届くまで、事前推定値 − NDT の解](dev_log_images/tfgrid_gazebo_spin5.png)
+
+![同じ比較（実機 blue spin5）](dev_log_images/tfgrid_blue_spin5.png)
