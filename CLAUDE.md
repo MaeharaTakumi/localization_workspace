@@ -124,7 +124,11 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 - **曖昧な点は自分で判断せず、必ずユーザーに質問する。**
 - **作業がひと区切りついたら（動作を確かめ、開発ログ・README を直したら）、確認を取らずに commit して push する**（2026-10-16、ユーザー指示。
   変更したリポジトリ（localization_tools・localizer_docker・localization_bringup など）ごとに。push したら commit を報告する）。
-- GitHub リポジトリの作成・コンテナの作り直し・イメージの再ビルドは、ユーザーの確認を取ってから行う。
+- **変更したら、実行する前に毎回再ビルドする**（2026-10-27、ユーザー指示）：`src/` のリポジトリを変えたら、`test` で何かを実行する前に毎回 `docker cp`・chown・
+  `colcon build`（localization_tools は `sync.sh push`）で反映する。`docker/`（localizer_docker）を変えたら、**確認を取らずに**イメージを再ビルドし、
+  `test` を作り直す（`src/` を写してビルド、localization_tools を `sync.sh push`、`.bash_history`・`.rviz2`・`.ssh/known_hosts` を戻し、
+  ROS 2 が Gazebo 用（127.0.0.1 だけ）であることを確かめる。下の「コンテナ」）。推定を動かしているときは止めてから行う。
+- GitHub リポジトリの作成は、ユーザーの確認を取ってから行う（イメージの再ビルドとコンテナの作り直しは上の場合は確認不要。それ以外は確認を取る）。
 
 ## コンテナ
 
