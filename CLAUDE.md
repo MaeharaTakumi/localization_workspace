@@ -99,7 +99,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
     図は `plot/plot_motion_compare.py report /root/ros2_ws/fig/compare <結果>`（`dev_log.md` の 22）。再生は `tune_run.py` の `replay`
   - `plot/`：`plot_spin.py`（誤差と angle_diff の時間推移。bag の読み込み・色・`capitalize_labels` など共通部品も）、
     `plot_axes.py`（6 軸と処理時間）、`plot_velocity.py`（v・omega の推移と遅れ）、`plot_scale.py`（omega の倍率）、
-    `plot_odom_filter.py`（移動平均・倍率。`gazebo_changes.md` 用）、`plot_ekf_compare.py`（再生の比較。条件は `plot/configs/*.json`）、
+    `plot_odom_filter.py`（移動平均・倍率。`gazebo_changes.md` 用）、`plot_ekf_compare.py`（再生の比較。条件は `plot/configs/*.json`）、`plot_runs.py`（候補ごとに再生 1 回ずつの値を点で並べる。`dev_log.md` の 74）、
     `check_*.py`・`compare_odom_timing.py`（オドメトリの検証）。`rerender_results.sh` で `results/` の図を全部描き直す
     （2026-10-14 に足りなかった約 30 個を加えた。NDT の R の図は約 9 分かかるので `FULL=1` のときだけ）
   - **録画（bag）の置き場所**（2026-10-13 からユーザー指示で Gazebo と実機を分ける。`eval/bag_paths.py`）：`test:/root/ros2_ws/bags/gazebo/<名前>`
@@ -119,7 +119,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 - **Gazebo コンテナ `20261002`（8843520b410f）のファイルは、ユーザーの許可なしに編集しない**（読むのは可）。
   問題を Gazebo 側の設定変更で解決しない。
 - **既存の自作 EKF（`ekf_localizer`）とその起動方法を壊さない。** `ekf_localizer` リポジトリは**ユーザーが指示したときだけ**変更する
-  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした。続けて `/tf_ndt_update`（`publish_ndt_update_tf`）もやめ、`publish_tf` もやめて TF を常に配信するようにした。2026-10-27：TF を周期の刻みの stamp で先の刻みまで送る `tf_future_steps`・`tf_past_steps` を足した（既定 0 で今と同じ。`dev_log.md` の 72））。
+  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした。続けて `/tf_ndt_update`（`publish_ndt_update_tf`）もやめ、`publish_tf` もやめて TF を常に配信するようにした。2026-10-27：TF を周期の刻みの stamp で先の刻みまで送る `tf_future_steps`・`tf_past_steps` を足した（既定 0 で今と同じ。`dev_log.md` の 72）。2026-11-05：状態に v_z・omega_roll・omega_pitch を足して 11 状態にした（`dev_log.md` の 74））。
   （robot_localization に切り替える機能は 2026-10-15 にユーザー指示で廃止した。下の「robot_localization（廃止）」）
 - **曖昧な点は自分で判断せず、必ずユーザーに質問する。**
 - **作業がひと区切りついたら（動作を確かめ、開発ログ・README を直したら）、確認を取らずに commit して push する**（2026-10-16、ユーザー指示。
@@ -235,7 +235,7 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
 ## アーキテクチャ（NDT + EKF）
 
 `/root/ros2_ws/src` のリポジトリ（すべて `MaeharaTakumi/*` の `humble`）：`lidarslam_ros2`（SLAM・地図作成）、
-`lidar_localization`（パッケージ名 `pcl_localization_ros2`。NDT と `cloud_stamp_corrector`）、`ekf_localizer`（8 状態 EKF）、
+`lidar_localization`（パッケージ名 `pcl_localization_ros2`。NDT と `cloud_stamp_corrector`）、`ekf_localizer`（11 状態 EKF）、
 `whill_odometry`（実機の車輪オドメトリ）、`localization_bringup`（launch・環境設定とオドメトリの共分散などの Python ノード）。
 詳細は `localization_bringup/docs/node_graph.md`（ノード・トピック・QoS・TF 表）と `ekf_localizer/docs/ekf_flow.md`。
 
@@ -293,10 +293,16 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   （`/etc/sysctl.d/` には書いていない）。sudo は Claude Code の中のシェルからは動かない（no new privileges）ので、ユーザーがアプリの外の端末で行う。
   実機の MATLAB は `/velodyne_points` を UDP で受けるので、実機の PC でも同じ設定にする。
 - **`/initialpose`** は NDT が **LiDAR の姿勢**として扱う（RViz の 2D Pose Estimate は z=0）。
-- **ekf_localizer の予測**（`src/ekf_core.cpp` の `propagate`、2026-10-12 から）：水平面を移動すると仮定した中点法（RK2）。
-  yaw_m = yaw + omega dt/2、x += v dt cos(yaw_m)、y += v dt sin(yaw_m)、yaw += omega dt。roll, pitch による v, omega の分解はしない。
-  z, roll, pitch は予測では動かさず Q のノイズだけ（以前は円弧の厳密積分で v cos(pitch)、z は −v sin(pitch)）。Gazebo の再生で
-  yaw・xy は同じ、z の誤差は少し小さい（`dev_log.md` の 18）。坂では NDT が途切れると z が遅れる（テスト `SlopeZHeldDuringNdtOutage`）。
+- **ekf_localizer の状態と予測**（`src/ekf_core.cpp` の `propagate`）：状態は 11 個
+  `[x, y, z, roll, pitch, yaw, v_xy, v_z, omega_roll, omega_pitch, omega_yaw]`（2026-11-05、ユーザー指示。それまでの 8 状態の `v`・`omega` を
+  `v_xy`・`omega_yaw` にし、添字は `kVxy`・`kVz`・`kOmegaRoll`・`kOmegaPitch`・`kOmegaYaw`。`Q`・`P_init` も 11 要素で、8 要素だと WARN を出してコードの既定値になる）。
+  各軸は独立（ユーザー指示）：水平面を移動すると仮定した中点法（RK2。2026-10-12 から）で yaw_m = yaw + omega_yaw dt/2、x += v_xy dt cos(yaw_m)、
+  y += v_xy dt sin(yaw_m)、yaw += omega_yaw dt。roll, pitch による v_xy, omega_yaw の分解はしない。z += v_z dt、roll += omega_roll dt、
+  pitch += omega_pitch dt（線形なので中点法でも厳密）。v_z は地図の z の速度、omega_roll・omega_pitch はオイラー角の変化率。速度 5 つはランダムウォーク。
+  **v_z・omega_roll・omega_pitch の `Q`・`P_init` は今 0**（ユーザーが選んだ。値は後で調整）で、その 3 つは 0 のまま、z, roll, pitch は Q のノイズだけで
+  足す前の 8 状態と同じ（同じ観測で丸め誤差まで一致を確認。`dev_log.md` の 74）。`/ekf_odom` は v_xy・omega_yaw だけ（ユーザーが選んだ）。
+  （2026-10-12 より前は円弧の厳密積分で v cos(pitch)、z は −v sin(pitch)。Gazebo の再生で yaw・xy は同じ、z の誤差は少し小さかった。`dev_log.md` の 18）。
+  坂では NDT が途切れると z が遅れる（テスト `SlopeZHeldDuringNdtOutage`）。v_z の `Q` を正にすると z は v_z で進む（`SlopeZFollowsVzDuringNdtOutage`）。
 - **ekf_localizer の NDT の観測**（`src/ndt_model.cpp`、2026-10-12 から）：LiDAR の姿勢を取付で base の姿勢 T_L·T_BL⁻¹ に直し、
   `R_ndt`（LiDAR、対角）をヤコビアンで伝播した相関込みの 6×6 で、6 成分を 1 回で更新する。
   ゲートは `gate_ndt` 1 つ（`ekf.yaml` は 1.0e5 で実質無効）。4 段の更新・ロックアウト・`gate_horizontal`・`gate_1d`・`lockout_count` は

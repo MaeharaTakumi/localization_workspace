@@ -1766,3 +1766,46 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 - 結果：4 つの環境ファイルで launch し（`ROS_DOMAIN_ID=99`）、`ros2 param get` で 2・1、起動ログに
   「ekf TF on the 0.020000 s grid: 2 future step(s), 1 past step(s) resent」が出ることを確かめた。再生の結果は 72 の F2・P1 の列。
   実機での走行はまだ確かめていない。
+
+## 2026-11-05
+
+### 74. ekf_localizer の状態に v_z・omega_roll・omega_pitch を足す（11 状態）
+
+- 目的（ユーザー指示）：z・roll・pitch にも速度を持たせ、各軸が独立した運動方程式にする。
+- 運動方程式（ユーザーと決めた。各軸は独立、v_z は地図の z の速度、omega_roll・omega_pitch はオイラー角の変化率）：
+  状態 x = [x, y, z, roll, pitch, yaw, v_xy, v_z, omega_roll, omega_pitch, omega_yaw]ᵀ（v → v_xy、omega → omega_yaw に名前を変えた。
+  v_xy は水平面の前向きの速さで、後退は負）。
+
+  ```
+  連続時間                      離散時間（dt。中点法）
+  dx/dt     = v_xy cos(yaw)       yaw_m = yaw + omega_yaw dt / 2
+  dy/dt     = v_xy sin(yaw)       x     += v_xy dt cos(yaw_m)、y += v_xy dt sin(yaw_m)
+  dz/dt     = v_z                 z     += v_z dt
+  droll/dt  = omega_roll          roll  += omega_roll dt
+  dpitch/dt = omega_pitch         pitch += omega_pitch dt
+  dyaw/dt   = omega_yaw           yaw   += omega_yaw dt
+  速度 5 つはランダムウォーク     速度 5 つはそのまま
+  ```
+
+  z・roll・pitch は線形で速度は区間の中で一定なので、中点法でも厳密な積分と同じ。ヤコビアンは今までの成分に F(z, v_z) = F(roll, omega_roll) =
+  F(pitch, omega_pitch) = dt を足したもの。
+- やったこと：
+  - ekf_localizer：`EkfCore::kN` を 11、添字を `kVxy`・`kVz`・`kOmegaRoll`・`kOmegaPitch`・`kOmegaYaw`（`kV`・`kOmega` から。頭の `k` は Google C++ Style Guide の定数の印）。
+    `propagate`・`transitionJacobian`・オドメトリの観測（[v_xy, omega_yaw] のまま）・`Q`・`P_init`（11 要素）・起動ログ・README・`docs/ekf_flow.md`（運動モデルの節を足した）。
+    `/ekf_odom` は v_xy・omega_yaw のまま（v_z などは base 座標の twist と合わないので出さない。ユーザーが選んだ）。
+  - **v_z・omega_roll・omega_pitch の `Q`・`P_init` は 0**（ユーザーが選んだ）：その 3 つと P のその行・列は 0 のままで、足す前の 8 状態と同じ動き。
+    値は後で調整する。`ekf.yaml`、localization_bringup の `gazebo.yaml`・`blue.yaml`（`Q` を上書きしている 2 つ）を 11 要素にした。
+  - テスト：運動モデル・ヤコビアン・坂のテストを 11 状態に直し、`SlopeZFollowsVzDuringNdtOutage`（v_z の `Q` を正にすると NDT が 2 s 途切れても
+    z が坂に沿って進む）を足した。
+  - localization_tools：`plot/plot_runs.py`（候補ごとに 1 回ずつの値を点で並べる図）、`eval/results/results_state11.jsonl`。
+- 結果：
+  - テスト 40 個が通った。坂（1/12）で NDT が 2 s 途切れたあとの z の誤差は、v_z なし 0.170 m、v_z あり（`Q` 1e-2）0.050 m。
+  - 同じ観測の列（再生の出力の `/ndt_pose` と元の録画の `/wheelchair/odom`、1805 回の更新）を前の 8 状態と 11 状態の `LaggedEkf` に入れると、
+    x・y・z・yaw・omega は完全に一致、roll・pitch・v・P の差は 7e-18 以下（丸め誤差）。
+  - `spin360_w1_ekf2` を前の 8 状態で 5 回、11 状態で 4 回再生（`tune_run.py`）。ノードは `gazebo.yaml` の 11 要素の `Q` を WARN なしで読んだ。
+    yaw の跳ねは再生ごとにいくつかの値のどれかになる：回転→前進は 3.00° か 3.66°（8 状態は 5 回中 2 回、11 状態は 4 回とも 3.66°）、
+    停止は 2.65・3.06・3.5° 付近（8 状態の 1 回と 11 状態の 4 回が 3.5° 付近）。定常の回転中の yaw 0.17〜0.21°、xy 46 mm は同じ程度。
+    同じ観測では丸め誤差まで一致するので、差は再生ごとのばらつき（11 状態が 4 回とも同じ側になったのは偶然とみている。確かめるなら回数を増やす）。
+  - 注意：`eval/batches/` の古い候補の 8 要素の `Q`・`P_init` は、WARN を出してコードの既定値になる（そのままでは使えない）。
+
+![同じ録画の再生：8 状態（5 回）と 11 状態（4 回）の 1 回ずつの値](dev_log_images/state11_replay_runs.png)
