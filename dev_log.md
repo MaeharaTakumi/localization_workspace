@@ -1809,3 +1809,16 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - 注意：`eval/batches/` の古い候補の 8 要素の `Q`・`P_init` は、WARN を出してコードの既定値になる（そのままでは使えない）。
 
 ![同じ録画の再生：8 状態（5 回）と 11 状態（4 回）の 1 回ずつの値](dev_log_images/state11_replay_runs.png)
+
+## 2026-11-06
+
+### 75. MATLAB の myplotResult が、点群と姿勢の新しい組が 1 つしかない記録で止まるのを直す
+
+- 目的：実機で MATLAB（CR_debug）を動かすと、走行後の `plotter.myplotResult` が `plotPosition` の `xlim(T([1,end],:)')` で
+  「Limits must be a 2-element vector of increasing numeric values」と止まった（ユーザーの報告）。
+- 原因：`LIDAR_pose` の図の横軸は新しい組を作った周期の時刻なので、新しい組が 1 つしかないと範囲の両端が同じになる。
+  この PC にある今日の記録（Gazebo、新しい組 180）の写しで、2 つ目以降の `LIDAR_new` を false にすると、直す前のコードで同じエラーになった。
+- やったこと（whill_common_matlab の cr_debug）：横軸の範囲を決める `timeLim` を足し、点が 2 つ以上あって時刻が進むときだけ `xlim` にした（5 か所）。
+- 結果：組が 1 つの記録でも、元の記録でも図が描けた。`myplotPointCloudVideo` も組が 1 つの記録で動画を作れた（369 フレーム）。
+- まだのこと：実機で新しい組が 1 つしかできなかった理由は分かっていない。点群の stamp の時刻の TF が引けないと前の組のままになる（`LIDAR_waiting`）ので、
+  ラズパイと自己位置推定の PC の時計のずれなどが考えられる。実機の記録（`data/<日付>/<時刻>`）で `LIDAR_waiting` と点群の stamp・`Now` を調べる。
