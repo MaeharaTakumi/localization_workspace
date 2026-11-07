@@ -99,7 +99,8 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
     図は `plot/plot_motion_compare.py report /root/ros2_ws/fig/compare <結果>`（`dev_log.md` の 22）。再生は `tune_run.py` の `replay`
   - `plot/`：`plot_spin.py`（誤差と angle_diff の時間推移。bag の読み込み・色・`capitalize_labels` など共通部品も）、
     `plot_axes.py`（6 軸と処理時間）、`plot_velocity.py`（v・omega の推移と遅れ）、`plot_scale.py`（omega の倍率）、
-    `plot_odom_filter.py`（移動平均・倍率。`gazebo_changes.md` 用）、`plot_ekf_compare.py`（再生の比較。条件は `plot/configs/*.json`）、`plot_runs.py`（候補ごとに再生 1 回ずつの値を点で並べる。`dev_log.md` の 74）、
+    `plot_odom_filter.py`（移動平均・倍率。`gazebo_changes.md` 用）、`plot_ekf_compare.py`（再生の比較。条件は `plot/configs/*.json`）、`plot_runs.py`（候補ごとに再生 1 回ずつの値を点で並べる。`--keys prior_ndt.roll` のような入れ子の指標も。`dev_log.md` の 74・76）、
+    `plot_q_sweep.py`（ekf_localizer の速度の Q ごとの指標。`dev_log.md` の 76）、
     `check_*.py`・`compare_odom_timing.py`（オドメトリの検証）。`rerender_results.sh` で `results/` の図を全部描き直す
     （2026-10-14 に足りなかった約 30 個を加えた。NDT の R の図は約 9 分かかるので `FULL=1` のときだけ）
   - **録画（bag）の置き場所**（2026-10-13 からユーザー指示で Gazebo と実機を分ける。`eval/bag_paths.py`）：`test:/root/ros2_ws/bags/gazebo/<名前>`
@@ -284,7 +285,8 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   localization_tools の `matlab/replay_matlab.sh`（ホストで実行。`dev_log.md` の 65）。
   NDT の解は実機 blue の走行中で点群が届いてから平均 34 ms（50 ms 以内 99.4 %）、Gazebo で平均 37〜43 ms。
   確かめるのは localization_tools の `eval/replay_outputs.py`（録画全体を再生して `/tf` などを録る）と `plot/plot_matlab_outputs.py`（`/tf` の周期、
-  点群の stamp より後の TF が届くまでの時間、事前推定値と NDT の解・NDT で更新した直後の値・真値の差。`compare` で前後を比べる）。
+  点群の stamp より後の TF が届くまでの時間、事前推定値と NDT の解・NDT で更新した直後の値・真値の差（水平・yaw、2026-11-07 から z・roll・pitch も）。
+  `compare` で前後を比べる）。候補ごとにまとめて流すのは `eval/outputs_batch.py`（`dev_log.md` の 76）。
   実機の録画をコンテナの中で再生すると大きい点群が受け手の側で落ちる（blue で NDT が解くのは半分ほど。出力を止めても、0.5 倍の速さでも同じ）。
   原因（`dev_log.md` の 66）：ROS 2 は 127.0.0.1 の UDP だけ（共有メモリなし）で、ソケットの受信バッファが 208 kB（`net.core.rmem_max` も同じ）。
   314 kB の実機の点群は断片があふれ、best effort の受け手（NDT・ekf_localizer・Gazebo モードの MATLAB）は約半分を失う（reliable は再送で全部届く。
@@ -299,8 +301,12 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   各軸は独立（ユーザー指示）：水平面を移動すると仮定した中点法（RK2。2026-10-12 から）で yaw_m = yaw + omega_yaw dt/2、x += v_xy dt cos(yaw_m)、
   y += v_xy dt sin(yaw_m)、yaw += omega_yaw dt。roll, pitch による v_xy, omega_yaw の分解はしない。z += v_z dt、roll += omega_roll dt、
   pitch += omega_pitch dt（線形なので中点法でも厳密）。v_z は地図の z の速度、omega_roll・omega_pitch はオイラー角の変化率。速度 5 つはランダムウォーク。
-  **v_z・omega_roll・omega_pitch の `Q`・`P_init` は今 0**（ユーザーが選んだ。値は後で調整）で、その 3 つは 0 のまま、z, roll, pitch は Q のノイズだけで
-  足す前の 8 状態と同じ（同じ観測で丸め誤差まで一致を確認。`dev_log.md` の 74）。`/ekf_odom` は v_xy・omega_yaw だけ（ユーザーが選んだ）。
+  v_z・omega_roll・omega_pitch の `Q`・`P_init` が 0 なら、その 3 つは 0 のまま、z, roll, pitch は Q のノイズだけで足す前の 8 状態と同じ
+  （同じ観測で丸め誤差まで一致を確認。`dev_log.md` の 74）。**今の値（2026-11-07、ユーザーが決めた。`dev_log.md` の 76）：`ekf.yaml`・Gazebo・red・white は 3 つとも 0、
+  実機 blue（`blue.yaml`）は omega_roll・omega_pitch 0.1（`P_init` 0.01）・v_z 0**。blue の録画で点群の時刻の予測値 − NDT の解の roll・pitch が最小
+  （調整に使っていない spin5 で −9 %・−5 %）。v_z は Q を大きくすると z が悪くなった。Gazebo は真の roll・pitch がほぼ動かず、omega 0.1 で
+  予測値 − 真値の roll・pitch が 15 % 悪くなる。実機の改善が本当の傾きの動きか NDT の誤差を追っただけかは、真値が無いので分からない。
+  `/ekf_odom` は v_xy・omega_yaw だけ（ユーザーが選んだ）。
   （2026-10-12 より前は円弧の厳密積分で v cos(pitch)、z は −v sin(pitch)。Gazebo の再生で yaw・xy は同じ、z の誤差は少し小さかった。`dev_log.md` の 18）。
   坂では NDT が途切れると z が遅れる（テスト `SlopeZHeldDuringNdtOutage`）。v_z の `Q` を正にすると z は v_z で進む（`SlopeZFollowsVzDuringNdtOutage`）。
 - **ekf_localizer の NDT の観測**（`src/ndt_model.cpp`、2026-10-12 から）：LiDAR の姿勢を取付で base の姿勢 T_L·T_BL⁻¹ に直し、
@@ -340,7 +346,9 @@ whill_odometry のコードの既定は red、`param/odometry.yaml`（2026-10-15
 2026-10-15 にユーザー指示で `real.yaml` と `whill:=` 引数をまとめ、環境ファイルの `whill` と `{whill}` の置き換えもやめた）、テスト走行の
 `run_test.sh <red|blue|white>`（`drive/config/<色>.yaml`。`WHILL`・`--whill` もやめた）で選ぶ（両方を同じ色にする）。`run_test.sh <色>` は
 選んだ色の `cmd_vel` を受けるノードが無ければ止める。
-**自己位置推定の PC と LiDAR の PC（ラズパイ）は時刻同期している**（2026-10-15 にユーザーが確認）。点群とオドメトリの時刻は環境ファイルの
+**自己位置推定の PC と LiDAR の PC（ラズパイ）は時刻同期している**（2026-10-15 にユーザーが確認。ただし実機 blue の録画
+`blue_calibration_20261016_133648`・`134316` はラズパイの時計がずれていて、受信時刻 − stamp が点群 60134 s・オドメトリ 60136 s。
+`stamp_mode: stamp` では再生できない。`141128` 以降はずれていない。`dev_log.md` の 76）。点群とオドメトリの時刻は環境ファイルの
 **`stamp_mode`** でそろえて決める（2026-10-15、ユーザー指示で `cloud_stamp_correction` を `clock_synced: true / false / auto` に置き換え、
 2026-10-22 にユーザー指示でノードと同じ名前の `stamp_mode` にした。`wall` ではなく `receipt` もユーザーが選んだ）：
 `stamp`（実機・Gazebo とも今はこれ）は stamp をそのまま、`receipt` は受信した時刻、`auto` は |受信した時刻 − stamp| が

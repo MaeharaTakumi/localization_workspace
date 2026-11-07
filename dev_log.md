@@ -1822,3 +1822,55 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 - 結果：組が 1 つの記録でも、元の記録でも図が描けた。`myplotPointCloudVideo` も組が 1 つの記録で動画を作れた（369 フレーム）。
 - まだのこと：実機で新しい組が 1 つしかできなかった理由は分かっていない。点群の stamp の時刻の TF が引けないと前の組のままになる（`LIDAR_waiting`）ので、
   ラズパイと自己位置推定の PC の時計のずれなどが考えられる。実機の記録（`data/<日付>/<時刻>`）で `LIDAR_waiting` と点群の stamp・`Now` を調べる。
+
+## 2026-11-07
+
+### 76. ekf_localizer の v_z・omega_roll・omega_pitch の Q を調整する（実機 blue は omega 0.1、Gazebo は 0）
+
+- 目的（ユーザー指示）：74 で足した 3 つの速度の `Q`（0 のまま）を決める。ユーザーと決めたこと：実機 blue の録画で調整して Gazebo で確かめる、
+  変えるのは足した 3 つだけ（z・roll・pitch の `Q` は今のまま）。
+- 指標：点群の stamp の時刻の予測値（`/tf` を補間して取付を掛けた LiDAR の姿勢。NDT の初期値・MATLAB の `LIDAR_pose` と同じ）− NDT の解の
+  |z|・|roll|・|pitch|・|yaw|・水平の平均（実機に真値は無い）。Gazebo は予測値 − 真値も。`plot/plot_matlab_outputs.py` に z・roll・pitch を足した。
+  録画の真値（Gazebo）・NDT の解（実機）で z・roll・pitch の動きを見ると、Gazebo は真の z の幅 0 mm・roll/pitch 0.02° 以下でほぼ動かない。
+  実機 blue のその場の回転（spin5）は NDT の roll・pitch の幅が約 3°、z が 7 cm。
+- やったこと：
+  - localization_tools：`eval/outputs_batch.py`（候補ごとに録画全体を `replay_outputs.py` で再生し、指標を jsonl に足す。回を外側に回し、
+    最初に録画を読んでおく）、`plot/plot_q_sweep.py`（Q ごとの指標）、`plot/plot_runs.py` に入れ子の指標（`prior_ndt.roll` など）。
+    候補は `eval/batches/batch_qvel_*.json`、結果は `eval/results/results_qvel_{blue,blue_check,gazebo}.jsonl`。
+  - 候補：v_z だけ 1e-4〜1e-1、omega_roll・omega_pitch（同じ値）だけ 1e-4〜10（`P_init` は正の Q のとき 0.01）。
+  - 調整用の録画 `blue_calibration_20261016_141128` で 2 回ずつ、調整に使っていない `blue_spin5_20261016_160557` で 3 候補を 3 回ずつ、
+    Gazebo `gazebo_spin5_20261016_111637` で 1 回ずつ（3 候補は 3 回）。
+  - **`blue_calibration_20261016_133648`・`134316` は使えなかった**：ラズパイの時計がずれていて、受信時刻 − stamp が点群 60134 s・オドメトリ
+    60136 s（点群とオドメトリの間も 1.67 s）。`stamp_mode: stamp` では NDT が点群の stamp の TF を引けない（`141128` 以降はずれていない）。
+  - ホストを起動し直していたので、ユーザーが `net.core.rmem_max`・`rmem_default` を 8 MB に戻した（NDT が解いたのは 141128 で 1379〜1382、spin5 で 1515〜1516。落ちていない）。
+- 結果（予測値 − NDT の解の平均。調整用の録画、2 回の平均）：
+
+  | Q | z [mm] | roll [°] | pitch [°] | yaw [°] | 水平 [mm] |
+  |---|---|---|---|---|---|
+  | 0（前） | 4.02 | 0.0588 | 0.0587 | 0.0347 | 2.30 |
+  | v_z 1e-3 | 4.10 | 0.0587 | 0.0599 | 0.0343 | 2.22 |
+  | v_z 1e-2 | 4.18 | 0.0604 | 0.0610 | 0.0347 | 2.30 |
+  | v_z 1e-1 | 4.45 | 0.0615 | 0.0608 | 0.0340 | 2.31 |
+  | omega 1e-3 | 4.02 | 0.0571 | 0.0606 | 0.0330 | 2.29 |
+  | omega 1e-2 | 4.07 | 0.0563 | 0.0564 | 0.0317 | 2.30 |
+  | omega 1e-1 | 4.03 | **0.0543** | **0.0545** | **0.0310** | **2.19** |
+  | omega 1 | 4.02 | 0.0610 | 0.0591 | 0.0320 | 2.30 |
+  | omega 10 | 3.96 | 0.0924 | 0.0751 | 0.0308 | 2.55 |
+
+  - v_z は Q を大きくするほど z が悪くなる（NDT の z の揺れを拾う）。Gazebo（1 回ずつ）の真値との差の z も 6.8〜7.5 mm で、前（7.4 mm）と変わらない。→ 0 のまま。
+  - omega_roll・omega_pitch は 0.1 で最小。同じ候補の 2 回の差は約 0.001° で、差はばらつきより大きい。
+  - 調整に使っていない spin5（3 回ずつ）：前 roll 0.0740・pitch 0.0783・水平 3.78 mm、omega 0.01 で 0.0724・0.0772・3.79、
+    omega 0.1 で **0.0673（−9 %）・0.0747（−5 %）・3.68（−3 %）**。yaw（0.061°）と z（4.6 mm）は変わらない。
+  - Gazebo（3 回ずつ）の予測値 − 真値：前 roll 0.120°・pitch 0.100°、omega 0.01 で 0.130・0.113、omega 0.1 で **0.139（+15 %）・0.117（+16 %）**
+    と悪くなる（真の roll・pitch がほとんど動かないので、速度を持たせると NDT の揺れを追う）。yaw（0.19°）・水平・z は変わらない。
+  - 実機の改善は真値が無いので、実際の傾きの動きを予測できたのか、NDT の時間的につながった誤差を追っただけかは区別できない。
+- 決めたこと（ユーザー）：**実機 blue の `blue.yaml` を omega_roll・omega_pitch 0.1**（`P_init` 0.01。v_z は 0）、**Gazebo は 0 のまま**、
+  red・white は録画で確かめるまで `ekf.yaml` の 0 のまま。`blue.yaml` だけで spin5 を再生すると（上書きなし、1 回）roll 0.0688・pitch 0.0752°、
+  起動ログの `Q`・`P_init` も 11 要素で読まれていた。
+
+![調整用の録画（実機 blue_calibration_141128）：Q ごとの予測値 − NDT の解（左 v_z、右 omega_roll・omega_pitch、灰色は Q 0）](dev_log_images/qvel_blue_ndt.png)
+
+![調整に使っていない実機 blue_spin5：予測値 − NDT の解（1 回ずつの値）](dev_log_images/qvel_blue_spin5_check.png)
+
+![Gazebo gazebo_spin5：予測値 − 真値（1 回ずつの値）](dev_log_images/qvel_gazebo_check.png)
+
