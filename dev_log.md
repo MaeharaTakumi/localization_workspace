@@ -1874,3 +1874,23 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 
 ![Gazebo gazebo_spin5：予測値 − 真値（1 回ずつの値）](dev_log_images/qvel_gazebo_check.png)
 
+
+### 77. 取付の rpy を rad で表示、走ってよい範囲の確認をやめる、走り出しを Enter に
+
+- 目的（ユーザー指示）：(1) パラメータ推定の取付の roll・pitch・yaw の表示を、設定（env の `static_tfs` の `rpy`）と同じ rad にする。
+  (2) テスト走行・パラメータ推定の走行で、走ってよい範囲の確認をやめる。(3) 実機の走り出しの確認を `yes` から Enter にする。
+- やったこと（localization_tools）：
+  - `calibrate.py` の summary、`calibrate_mount_scale.py` の取付の yaw（区間ごと・最終）と roll・pitch の表示、図 `mount_scale_yaw.png` の縦軸を rad にした
+    （`summary.yaml` はもとから rad）。RANSAC のしきい値 `ransac_threshold_deg`、NDT の yaw の変化、旋回の角度、ノイズの表の roll・pitch・yaw は deg のまま。
+  - `drive_test.py`：走る前の軌跡が範囲に収まるかの確認と、走行中の範囲の外に出たら止める処理を消した。走る前の計画（軌跡の前・左の幅）は表示する。
+    設定（`drive/config/*.yaml`）の `area`・`plan_margin` を消した（`plot_drive_paths.py` は `area` があれば重ねる）。止めるのは、姿勢が 0.5 s 来ない・
+    ジョイスティック・時計の停止・区間 60 s・Ctrl-C。
+  - 確認（`confirm: true`、実機）は Enter で走り出す。何か入力して Enter なら取りやめ。
+  - localizer_docker の README・`src/aliases.txt` の `drive_list`・`calibration_plan` の説明から「範囲に収まるか」を消した。
+- 確かめたこと：
+  - 実機 blue の録画 `blue_calibration_20261016_141128` で `calibrate` を動かすと、取付は roll −0.013811・pitch +0.016072・yaw +0.019088 rad
+    （`blue.yaml` の `static_tfs` は −0.0138・0.0167・0.0191）。
+  - `calibration_plan blue`・`drive_test.py red spin5 --simulate` は範囲の判定なしで計画を表示し、終了コード 0。
+  - Gazebo で `confirm: true` の設定と止まるだけの動きで、`x` + Enter は取りやめ（終了コード 1）、Enter だけなら走り出して最後まで動いた（終了コード 0）。
+
+![実機 blue_calibration_141128：直進の区間の各時刻の取付の yaw と最終値（rad）](dev_log_images/mount_scale_yaw_rad_blue_141128.png)

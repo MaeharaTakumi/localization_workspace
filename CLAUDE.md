@@ -67,7 +67,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
     （2026-10-16、ユーザー指示で決めた）：車体の位置（LiDAR − 取付）と LiDAR の yaw を前後 0.5 s で平滑化して各時刻の進む向きとの差を出し、
     オドメトリの v が安定していない時刻は使わない。RANSAC は 1 点を仮の値にして 0.3° 以内のインライアが最も多いものを選び、インライアの平均。
     （区間全体の円弧の当てはめ・始点と終点を結ぶ方法・Censi ほか（IEEE T-RO 29(2):475-492, 2013）の同時推定とも比べ、Gazebo で LiDAR を 5° 回した
-    試験で 4 つとも 5.00〜5.01°、差は 0.02° 以内だった。比べたものは消した。`dev_log.md` の 49〜52）。各時刻の取付の yaw と最終値の図は `mount_scale_yaw.png`。
+    試験で 4 つとも 5.00〜5.01°、差は 0.02° 以内だった。比べたものは消した。`dev_log.md` の 49〜52）。各時刻の取付の yaw と最終値の図は `mount_scale_yaw.png`。**取付の roll・pitch・yaw は表示・`summary.yaml`・図とも rad**（env の `static_tfs` の `rpy` と同じ。2026-11-07、ユーザー指示。それまで表示と図は deg）。
   - **パラメータ推定を走行とセットで**（2026-10-15、ユーザー指示）：`calibration/run_calibration.sh <target> [<bag 名>]`（コマンド `calibration`）が
     推定用の動き（その場で左に 4 周 → 止まる 5 s → 片道の直進 → 止まる。`motion.yaml` の 5 つ。2026-10-15 にユーザー指示で、4 方向に止まる段・右回り・最初の停止をやめた。
     Gazebo・実機で共通の 1 組。上限を超えると走らない）で走って録画し、`calibration/calibrate.py <target> <bag>`（コマンド `calibrate`）で
@@ -85,11 +85,11 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
     みなしてその場で動かす。実機の PC ではコンテナの中から使う。Gazebo はホストからなら起動し直して推定器も起動、コンテナの中からは
     起動し直さない。実機は推定・whill_driver・LiDAR が動いていることを確かめるだけ）。走らせるのは `drive/drive_test.py`、動きは `drive/profiles.yaml`（spin・spin5・stops・accel・curve・slalom・reverse。
     速さは上限に対する割合、直進は距離・旋回は角度・円は半径なので上限を変えても形は同じ）、設定は `drive/config/<target>.yaml`（実機は車椅子の色ごとの `red.yaml`・`blue.yaml`・`white.yaml`。2026-10-15 に `real.yaml` から分けた）
-    （上限：Gazebo v 1.5・後退 0.8 m/s・ω 1.0 rad/s、実機 0.5・0.3・0.5（ユーザー指示の既定）。走ってよい範囲：両方とも出発時の
-    車体の中心を基準に前 10 m・後ろ 1 m・左右 2 m（ユーザー指示）。指令・姿勢・ジョイスティック・録画のトピック）。
-    走る前に計算した軌跡が範囲に収まるか確かめ、走行中は範囲外・姿勢が 0.5 s 来ない（壁時計で測る）・ジョイスティック・時計の停止・
+    （上限：Gazebo v 1.5・後退 0.8 m/s・ω 1.0 rad/s、実機 0.5・0.3・0.5（ユーザー指示の既定）。指令・姿勢・ジョイスティック・録画のトピック）。
+    **走ってよい範囲（前 10 m・後ろ 1 m・左右 2 m）の確認は 2026-11-07 にユーザー指示でやめた**（走る前・走行中とも。設定の `area`・`plan_margin` も消した。
+    走る前の計画（計算した軌跡）は表示する。`dev_log.md` の 77）。走行中は姿勢が 0.5 s 来ない（壁時計で測る）・ジョイスティック・時計の停止・
     区間 60 s・Ctrl-C/SIGTERM で 0 を送って止める（rclpy に Ctrl-C を処理させない。処理させると通信が先に閉じて 0 を送れない）。
-    実機は計画を表示して `yes` で走り出す。`CONFIG=real_in_gazebo` で実機の設定を Gazebo で試せる（予行演習）。`CONFIG=gazebo_ground`（動きは `PROFILES=.../drive/profiles_velocity.yaml`）は車椅子を世界の原点の地面（ground_plane、z −0.4 から落とす）に置き、推定を起動しない（設定の `gazebo_launch_args` を Gazebo の launch に渡し、`localization: false`。2026-10-19、`dev_log.md` の 57）。録画は
+    実機は計画を表示して Enter で走り出す（何か入力して Enter なら取りやめ。2026-11-07 にユーザー指示で `yes` から変えた）。`CONFIG=real_in_gazebo` で実機の設定を Gazebo で試せる（予行演習）。`CONFIG=gazebo_ground`（動きは `PROFILES=.../drive/profiles_velocity.yaml`）は車椅子を世界の原点の地面（ground_plane、z −0.4 から落とす）に置き、推定を起動しない（設定の `gazebo_launch_args` を Gazebo の launch に渡し、`localization: false`。2026-10-19、`dev_log.md` の 57）。録画は
     `/root/ros2_ws/bags/<target>/<bag 名>` と `_phases.txt`・`_info.yaml`（走行を途中で止めたら理由をメモに書く）。
     2026-10-13 より前の Gazebo の録画は旧版（`gazebo/drive_spin.py` 1 rad/s・1.5 m/s・時間で区切る、`drive_profile.py`、
     `drive.py` など。範囲は部屋全体）で、今の動きとは大きさが違う
