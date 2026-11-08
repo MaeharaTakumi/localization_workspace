@@ -1894,3 +1894,25 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - Gazebo で `confirm: true` の設定と止まるだけの動きで、`x` + Enter は取りやめ（終了コード 1）、Enter だけなら走り出して最後まで動いた（終了コード 0）。
 
 ![実機 blue_calibration_141128：直進の区間の各時刻の取付の yaw と最終値（rad）](dev_log_images/mount_scale_yaw_rad_blue_141128.png)
+
+## 2026-11-09
+
+### 78. 実機の 2 つの記録（2026-11-07）の点群地図の動画を作り直す
+
+- 目的（ユーザー指示）：実機の記録 `20261107_214852_manual_control`・`20261107_220334_testRun`（外付け SSD の `whill_common_matlab-cr_debug/data/20261107/`）の動画を、
+  `main.m` が参照している点群地図 `soken_20261106.pcd` で作り直す。
+- やったこと：ホストの MATLAB R2026a（`-batch`）で、SSD の `whill_common_matlab-cr_debug` の `plotter.myplotPointCloudVideo(<記録>, <地図>)` を実行した。`main.m` の `mapFile` の絶対パス
+  （`/home/student/Desktop/...`）はこの PC に無いので、SSD の同じフォルダの直下にある同じ名前の pcd を渡した。コードは変えていない。前の動画は `pointcloud_map_old.avi` に改名して残した。
+- 結果：各記録の `result/video/pointcloud_map.avi`（1200×760、20 fps、Motion JPEG）。
+
+| 記録 | 長さ | フレーム数 | 作成時間 |
+|---|---|---|---|
+| `20261107_214852_manual_control` | 53.15 s | 1063 | 72 s |
+| `20261107_220334_testRun` | 18.40 s | 368 | 22 s |
+
+- 前の動画と比べると（`manual_control` の中ほどの 1 フレーム）、長さ・時刻・地図と点群の形は同じだが、前の動画は図が拡大されていて軸ラベルが切れ、凡例が地図に大きく重なっていた。
+  作り直した動画は図全体が収まっている。前の動画がそうなった原因は調べていない。
+
+![manual_control の動画（t = 47.88 s）](dev_log_images/pointcloud_video_manual_control_20261107.png)
+
+![testRun の動画（t = 16.58 s）](dev_log_images/pointcloud_video_testRun_20261107.png)
