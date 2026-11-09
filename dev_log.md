@@ -1960,3 +1960,9 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - `alpha`・`tau` を 0 以外にした再生（`odomr_tau_check`）も最後まで動いた。blue の録画の再生と実車では確かめていない（blue の R の値は今までと同じ）。
 
 ![Gazebo の再生：オドメトリの R（旧の値と blue の値）](dev_log_images/odom_r_ekf_runs.png)
+
+### 81. whill_odometry の `var_v`・`var_omega` の廃止
+
+- 目的（ユーザー指示）：オドメトリの R を ekf_localizer が計算するようになり（80）、どこからも読まれなくなった `var_v`・`var_omega` をやめる。
+- やったこと：whill_odometry のパラメータと、`/wheelchair/odom` の `twist.covariance` を埋める処理を消した（Gazebo の `/wheelchair/odom` と同じく共分散 0。`pose.covariance` はそのまま）。
+- 結果：ビルドは通った。`motor_speed` に右 −3.6・左 1.8 km/h を入れると v 0.75 m/s・omega 1.0101 rad/s（式どおり）、`twist.covariance` はすべて 0、`var_v`・`var_omega` のパラメータは無い。実機では確かめていない。

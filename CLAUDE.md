@@ -320,7 +320,7 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   Gazebo（`gazebo.yaml`）は 2026-10-26 まで `publish_trigger: update`（時刻は stamp）。再生で timer（20 Hz）と同じか少し良く、ばらつきが小さかった
   （6 回 0.91〜1.02、timer 4 回 0.95〜1.19）。receipt + update は 1.03（`dev_log.md` の 20・21）。`publish_trigger` は 2026-10-26 にやめた（上の「`/tf`・`/ekf_pose` の出し方」）。
 - **オドメトリ**：使うのは `twist.linear.x`・`twist.angular.z`。Gazebo は diff_drive_controller の odom を `gazebo_bridge` が
-  中継する `/wheelchair/odom`（50 Hz、best effort、**共分散 0**）、実機は `whill_odometry`（共分散あり）。Gazebo の速度は
+  中継する `/wheelchair/odom`（50 Hz、best effort、**共分散 0**）、実機は `whill_odometry`（**共分散 0**。2026-11-09 にユーザー指示で `var_v`・`var_omega` を廃止した）。Gazebo の速度は
   2026-10-12 から移動平均なし（`velocity_rolling_window_size: 1`）。**それより前の録画は 0.2 s の移動平均で約 0.1 s 遅れている**
   （録画を再生して比べるときは、どちらの録画かに注意。移動平均 1 の録画は `spin360_w1_ekf`（調整用）と `spin360_w1_ekf2`（確認用））。
   MATLAB（`Project-SIP/main` の `SensorFetcher.m`）も Gazebo モードで `/wheelchair/odom` の v・omega を使う。
