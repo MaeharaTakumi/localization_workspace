@@ -1942,3 +1942,21 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 ![Gazebo test_spin：新しい組の間隔（点群の stamp の差）](dev_log_images/matlab_sensor5_LiDAR_pair_interval.png)
 
 ![Gazebo test_spin：後輪間中心と点群の stamp の LiDAR の軌跡](dev_log_images/matlab_sensor5_Trajectory.png)
+
+### 80. オドメトリの観測ノイズの計算を ekf_localizer に移す
+
+- 目的（ユーザー指示）：オドメトリの共分散の計算を `odom_covariance` ノードから ekf_localizer に移す。値は実機 blue の共分散の設定を使う。
+- やったこと：
+  - ekf_localizer：`R_odom`・`odom_noise_alpha`・`accel_noise_tau` をパラメータにして、`OdomNoise`（`odom_model`）が R を計算する（式は今までと同じ。加速度は直前のメッセージとの差）。
+    `odom_covariance_source` をやめ、メッセージの共分散は使わない。`R_odom` が正でないときは WARN を出して既定値。テストを 3 個足した。
+  - `ekf.yaml` の値は blue の `R_odom` [6.08e-3, 9.92e-4]・alpha 0・tau 0。**ユーザー指示で全環境で同じ値**（Gazebo・red・white は [2.5e-3, 5.0e-3] から変わる）。倍率 `odom_scale`・Q は変えていない。
+  - `odom_covariance`：倍率（`odom_scale`）と時刻（`stamp_mode`）だけのノードにした（ユーザー指示で残す。名前もそのまま）。環境ファイルから R の項目を消し、`parameters.odom_covariance` に残っていると launch がエラーで止まる。
+  - localization_tools：`calibrate.py`・`calibrate_noise.py` の候補の `R_odom` を `ekf_localizer` の節に移した。過去の候補 17 個（`eval/batches/`）の R の項目も `ekf_localizer` に移した（`R_odom_other` は消した）。
+- 結果：
+  - ekf_localizer のテスト 43 個は通った（テストの模擬オドメトリのノイズに合わせて、テストの `R_odom` は旧既定の値を明示した）。blue・Gazebo の launch のログで `R_odom` [0.00608, 0.000992]・`odom_scale` はそれぞれの環境の値。古い項目を残した環境ファイルは launch が止める。
+  - Gazebo の `spin360_w1_ekf2` を各 4 回再生（`eval/batches/batch_odom_r_ekf.json`、`eval/results/results_odom_r_ekf.jsonl`、`plot/plot_runs.py`）。平均（旧 R → blue の R）：
+    NDT の angle_diff 0.189 → 0.270°（範囲が重ならない）、回転開始の yaw の跳ね 0.81 → 1.06°、定常の回転中の yaw 0.187 → 0.201°、xy 0.046 → 0.047 m（ばらつきの範囲）。
+    **Gazebo では blue の R のほうが少し悪い**（R_omega が 5 分の 1 で、オドメトリの omega をより強く信じるため。Gazebo の値はもともと Gazebo に合わせて調整したもの）。
+  - `alpha`・`tau` を 0 以外にした再生（`odomr_tau_check`）も最後まで動いた。blue の録画の再生と実車では確かめていない（blue の R の値は今までと同じ）。
+
+![Gazebo の再生：オドメトリの R（旧の値と blue の値）](dev_log_images/odom_r_ekf_runs.png)

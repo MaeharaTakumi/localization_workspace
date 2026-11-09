@@ -120,7 +120,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 - **Gazebo コンテナ `20261002`（8843520b410f）のファイルは、ユーザーの許可なしに編集しない**（読むのは可）。
   問題を Gazebo 側の設定変更で解決しない。
 - **既存の自作 EKF（`ekf_localizer`）とその起動方法を壊さない。** `ekf_localizer` リポジトリは**ユーザーが指示したときだけ**変更する
-  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした。続けて `/tf_ndt_update`（`publish_ndt_update_tf`）もやめ、`publish_tf` もやめて TF を常に配信するようにした。2026-10-27：TF を周期の刻みの stamp で先の刻みまで送る `tf_future_steps`・`tf_past_steps` を足した（既定 0 で今と同じ。`dev_log.md` の 72）。2026-11-05：状態に v_z・omega_roll・omega_pitch を足して 11 状態にした（`dev_log.md` の 74）。2026-11-09：点群の購読・`time_source`・`points_topic` をやめ、観測の時刻を常にメッセージの stamp にした（`dev_log.md` の 79））。
+  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした。続けて `/tf_ndt_update`（`publish_ndt_update_tf`）もやめ、`publish_tf` もやめて TF を常に配信するようにした。2026-10-27：TF を周期の刻みの stamp で先の刻みまで送る `tf_future_steps`・`tf_past_steps` を足した（既定 0 で今と同じ。`dev_log.md` の 72）。2026-11-05：状態に v_z・omega_roll・omega_pitch を足して 11 状態にした（`dev_log.md` の 74）。2026-11-09：点群の購読・`time_source`・`points_topic` をやめ、観測の時刻を常にメッセージの stamp にした（`dev_log.md` の 79）。2026-11-09：オドメトリの観測ノイズの計算を `odom_covariance` から移し、`odom_covariance_source` をやめた（`dev_log.md` の 80））。
   （robot_localization に切り替える機能は 2026-10-15 にユーザー指示で廃止した。下の「robot_localization（廃止）」）
 - **曖昧な点は自分で判断せず、必ずユーザーに質問する。**
 - **作業がひと区切りついたら（動作を確かめ、開発ログ・README を直したら）、確認を取らずに commit して push する**（2026-10-16、ユーザー指示。
@@ -136,7 +136,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 | コンテナ | ID | イメージ | 役割 |
 |---|---|---|---|
 | `20261002` | 8843520b410f | `ubuntu_22_04` | Gazebo（車椅子モデル・ワールド・MATLAB 連携）。**編集禁止**（例外は下記の許可済みの変更のみ） |
-| `test` | c37a97ad02d5 | `localizer_maehara:latest` | **自己位置推定の開発用**（`docker/` からビルド。2026-10-15 に `test_maehara`・`localizer_rl:latest` から名前を変えた。2026-10-23 にフォルダの移動に合わせて、2026-10-27・2026-11-07・2026-11-09 にイメージの再ビルドに合わせて作り直した） |
+| `test` | b4c04ebf0cd5 | `localizer_maehara:latest` | **自己位置推定の開発用**（`docker/` からビルド。2026-10-15 に `test_maehara`・`localizer_rl:latest` から名前を変えた。2026-10-23 にフォルダの移動に合わせて、2026-10-27・2026-11-07・2026-11-09 にイメージの再ビルドに合わせて作り直した） |
 
 - 2026-10-23 にユーザーが `whillLocalizer`（これまでの自己位置推定、`whill_localizer:latest`）と `localizer_ekf`（`localizer_ekf:latest`）のコンテナとイメージを削除した。
   `localizer_ekf` は `archive/localizer_ekf_docker` から作り直せる。`ros2_0605`・`ros2_1024`・`ros2_v2`（自己位置推定とは別のコンテナ。ユーザー指示で残す）は触らない。
@@ -159,7 +159,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 - `test` は numpy 入り。`.bashrc` の通信設定は既定で Gazebo 用。
   `ROS_DOMAIN_ID=11`、Gazebo・MATLAB と同じ Fast DDS プロファイル（`/root/fastdds_localhost.xml`、localhost のみ）。
   実機（LAN 越しに LiDAR PC と通信）では `.bashrc` の通信設定ブロックを切り替える。
-- イメージ `localizer_maehara:latest`（`docker/`（localizer_docker）113a2e7。2026-11-09 に README の変更で同じ手順で再ビルドして `test` を作り直した（ekf_localizer のテスト 40 個、DDS は 127.0.0.1 の UDP だけ）。2026-11-07 に README・aliases の変更で再ビルドして `test` を作り直した（同じ手順、ekf_localizer のテスト 40 個）。2026-10-27 にユーザー指示で再ビルド（`docker compose build`。各リポジトリは GitHub の最新を取り込む）し、`docker compose up -d --force-recreate` で `test` を作り直した。`src/` の 4 つを写してビルド、localization_tools を `sync.sh push`、`.bash_history`・`.rviz2`・`.ssh/known_hosts`・`.gitconfig` を戻し、DDS が 127.0.0.1 の UDP だけ（TCP なし）・ekf_localizer のテスト 39 個が通ることを確かめた。VS Code の `.vscode-server` は戻していない（つなぎ直すと作られる））：`localization_bringup` は既定で `humble`（build-arg `BRINGUP_BRANCH`）、
+- イメージ `localizer_maehara:latest`（`docker/`（localizer_docker）9334d37。2026-11-09 に README の変更で同じ手順で 2 回再ビルドして `test` を作り直した（2 回目は ekf_localizer のテスト 43 個、DDS は 127.0.0.1 の UDP だけ）。2026-11-07 に README・aliases の変更で再ビルドして `test` を作り直した（同じ手順、ekf_localizer のテスト 40 個）。2026-10-27 にユーザー指示で再ビルド（`docker compose build`。各リポジトリは GitHub の最新を取り込む）し、`docker compose up -d --force-recreate` で `test` を作り直した。`src/` の 4 つを写してビルド、localization_tools を `sync.sh push`、`.bash_history`・`.rviz2`・`.ssh/known_hosts`・`.gitconfig` を戻し、DDS が 127.0.0.1 の UDP だけ（TCP なし）・ekf_localizer のテスト 39 個が通ることを確かめた。VS Code の `.vscode-server` は戻していない（つなぎ直すと作られる））：`localization_bringup` は既定で `humble`（build-arg `BRINGUP_BRANCH`）、
   `localization_tools`（`main`）を `/root/ros2_ws/localization_tools` に clone、録画と図の置き場所 `/root/ros2_ws/bags/{gazebo,real}`・
   `/root/ros2_ws/fig`、地図 `/root/ros2_ws/map`（どれも `COLCON_IGNORE` 入り。`savemap`・地図選択も `/root/ros2_ws/map`）を作る。
   開発中のものは `src/` から `docker cp`（`localization_tools` は `sync.sh push`）で上書きする。
@@ -390,9 +390,9 @@ Gazebo を `auto` で走らせると、受信した時刻 − stamp は点群 �
   NDT の位置合わせは動いている間 平均 35〜41 ms・最大 120〜150 ms（止まっていると約 15〜20 ms）。EKF 使用時は NDT が
   TF（点群の時刻）を待つので、`/ndt_pose` の遅れは ekf_localizer（当時の `publish_trigger: timer` 20 Hz。今は `predict_rate` 50 Hz）で平均 68 ms。
   ekf_localizer の `/ekf_pose` の遅れは約 0 ms（stamp が配信時刻の予測値）。
-- **オドメトリの R**（`scripts/odom_covariance.py`）：`use_ekf:=true` のとき、オドメトリは `odom_covariance` で
-  R_v = R0 + a0·v² + a1·ω²、R_ω = R0 + a2·v² + a3·ω²（Nav2 AMCL の odom_alpha と同じ考え方）の共分散を付けて
-  `/localization/odom` に中継される。ekf_localizer は launch が `odom_covariance_source: message` にして読む。
+- **オドメトリの R**（2026-11-09 にユーザー指示で `odom_covariance` から ekf_localizer に移した。`OdomNoise`、`dev_log.md` の 80）：
+  ekf_localizer が R_v = R0 + a0·v² + a1·ω² + (τ0·dv/dt)²、R_ω = R0 + a2·v² + a3·ω² + (τ1·dω/dt)²（Nav2 AMCL の odom_alpha と同じ考え方）を計算する（`ekf.yaml` の `R_odom`・`odom_noise_alpha`・`accel_noise_tau`。
+  **全環境で実機 blue の値** `R_odom` [6.08e-3, 9.92e-4]・alpha 0・tau 0。ユーザー指示。Gazebo の再生は旧の [2.5e-3, 5.0e-3] より angle_diff 0.189 → 0.270° と少し悪い）。`odom_covariance` は倍率と時刻だけのノードで、`/localization/odom` に中継する。以下は `odom_covariance` で計算していたころに調べたこと。
   既定 alpha = 0（固定 R、今までと同じ動きを再生で確認）。速さに応じた R は、再生の比較でばらつき（スコア ±0.04）を超える改善がなく、
   ω に応じて R を大きくすると悪化した（回転中の yaw 0.63 → 0.73〜0.90°）。
   ROS 2 の標準にオドメトリの R を時変にする機能は無い（diff_drive_controller の共分散は固定パラメータ）。
@@ -400,7 +400,7 @@ Gazebo を `auto` で走らせると、受信した時刻 − stamp は点群 �
   v に応じた R は回転→前進の跳ねを小さくするが停止の跳ねを大きくする。omega の Q 10 が大きく、R_ω を 11 倍にしても omega は
   ほぼオドメトリに従う）。真値なしで測ったオドメトリの残差（σ_v 0.0001、σ_ω 1 rad/s で 0.011）は `R_odom` よりずっと小さい。
   `R_odom` を 1e-6 にしても（alpha あり・なしとも）その場の回転の yaw は変わらない（`dev_log.md` の 25。omega のゲインは
-  0.976 → ほぼ 1 で、もともとオドメトリにほぼ従っている）。`R_odom` をちょうど 0 にすると ekf_localizer は `ekf.yaml` の `R_odom` に戻す。
+  0.976 → ほぼ 1 で、もともとオドメトリにほぼ従っている）。`R_odom` が正でないと ekf_localizer は WARN を出してコードの既定値にする。
 - **遅れの補正と Q**（2026-10-11、移動平均 10 のころ）：`odom_covariance` に `odom_delay`（stamp を戻す）と `accel_noise_tau`
   （R に (τ·加速度)²）を追加。`odom_delay: 0.09` と Q の omega 10 で、調整に使っていない録画の 4 つの瞬間の yaw 誤差の最大の平均は
   4.3 → 3.3°（NDT 単体 1.7°）、定常の回転中 0.54〜0.59°。加速度に応じた R と速さに応じた R は効かない（速度が変わる間オドメトリを
