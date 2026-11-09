@@ -30,7 +30,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 
 - `src/localization_bringup/`：`MaeharaTakumi/localization_bringup` の clone。ブランチ `humble`（2026-10-15 に `robot_localization` ブランチから
   robot_localization を外して humble にマージした。以後 humble で開発。`robot_localization` ブランチは廃止前の 23767ee のまま残す）
-- `src/lidar_localization/`（NDT・`cloud_stamp_corrector`）・`whill_odometry/`：`MaeharaTakumi/*` の clone（ブランチ `humble`。2026-10-15 から）。
+- `src/lidar_localization/`（NDT）・`whill_odometry/`：`MaeharaTakumi/*` の clone（ブランチ `humble`。2026-10-15 から）。
   反映は `docker cp src/<リポジトリ>/. test:/root/ros2_ws/src/<リポジトリ>/` と chown、ビルド（パッケージ名は `pcl_localization_ros2`・`whill_odometry`）
 - `src/ekf_localizer/`：`MaeharaTakumi/ekf_localizer` の clone（ブランチ `humble`）。2026-10-12 にユーザー指示で予測を中点法に（b2360c0）、
   NDT の観測を base の姿勢に（be6fce8）変更（GitHub の humble に push 済み）。反映は `docker cp src/ekf_localizer/. test:/root/ros2_ws/src/ekf_localizer/` と chown、ビルド
@@ -120,7 +120,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 - **Gazebo コンテナ `20261002`（8843520b410f）のファイルは、ユーザーの許可なしに編集しない**（読むのは可）。
   問題を Gazebo 側の設定変更で解決しない。
 - **既存の自作 EKF（`ekf_localizer`）とその起動方法を壊さない。** `ekf_localizer` リポジトリは**ユーザーが指示したときだけ**変更する
-  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした。続けて `/tf_ndt_update`（`publish_ndt_update_tf`）もやめ、`publish_tf` もやめて TF を常に配信するようにした。2026-10-27：TF を周期の刻みの stamp で先の刻みまで送る `tf_future_steps`・`tf_past_steps` を足した（既定 0 で今と同じ。`dev_log.md` の 72）。2026-11-05：状態に v_z・omega_roll・omega_pitch を足して 11 状態にした（`dev_log.md` の 74））。
+  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした。続けて `/tf_ndt_update`（`publish_ndt_update_tf`）もやめ、`publish_tf` もやめて TF を常に配信するようにした。2026-10-27：TF を周期の刻みの stamp で先の刻みまで送る `tf_future_steps`・`tf_past_steps` を足した（既定 0 で今と同じ。`dev_log.md` の 72）。2026-11-05：状態に v_z・omega_roll・omega_pitch を足して 11 状態にした（`dev_log.md` の 74）。2026-11-09：点群の購読・`time_source`・`points_topic` をやめ、観測の時刻を常にメッセージの stamp にした（`dev_log.md` の 79））。
   （robot_localization に切り替える機能は 2026-10-15 にユーザー指示で廃止した。下の「robot_localization（廃止）」）
 - **曖昧な点は自分で判断せず、必ずユーザーに質問する。**
 - **作業がひと区切りついたら（動作を確かめ、開発ログ・README を直したら）、確認を取らずに commit して push する**（2026-10-16、ユーザー指示。
@@ -136,7 +136,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 | コンテナ | ID | イメージ | 役割 |
 |---|---|---|---|
 | `20261002` | 8843520b410f | `ubuntu_22_04` | Gazebo（車椅子モデル・ワールド・MATLAB 連携）。**編集禁止**（例外は下記の許可済みの変更のみ） |
-| `test` | 7f0727d76b70 | `localizer_maehara:latest` | **自己位置推定の開発用**（`docker/` からビルド。2026-10-15 に `test_maehara`・`localizer_rl:latest` から名前を変えた。2026-10-23 にフォルダの移動に合わせて、2026-10-27・2026-11-07 にイメージの再ビルドに合わせて作り直した） |
+| `test` | c37a97ad02d5 | `localizer_maehara:latest` | **自己位置推定の開発用**（`docker/` からビルド。2026-10-15 に `test_maehara`・`localizer_rl:latest` から名前を変えた。2026-10-23 にフォルダの移動に合わせて、2026-10-27・2026-11-07・2026-11-09 にイメージの再ビルドに合わせて作り直した） |
 
 - 2026-10-23 にユーザーが `whillLocalizer`（これまでの自己位置推定、`whill_localizer:latest`）と `localizer_ekf`（`localizer_ekf:latest`）のコンテナとイメージを削除した。
   `localizer_ekf` は `archive/localizer_ekf_docker` から作り直せる。`ros2_0605`・`ros2_1024`・`ros2_v2`（自己位置推定とは別のコンテナ。ユーザー指示で残す）は触らない。
@@ -159,7 +159,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 - `test` は numpy 入り。`.bashrc` の通信設定は既定で Gazebo 用。
   `ROS_DOMAIN_ID=11`、Gazebo・MATLAB と同じ Fast DDS プロファイル（`/root/fastdds_localhost.xml`、localhost のみ）。
   実機（LAN 越しに LiDAR PC と通信）では `.bashrc` の通信設定ブロックを切り替える。
-- イメージ `localizer_maehara:latest`（`docker/`（localizer_docker）694beba。2026-11-07 に README・aliases の変更で再ビルドして `test` を作り直した（同じ手順、ekf_localizer のテスト 40 個）。2026-10-27 にユーザー指示で再ビルド（`docker compose build`。各リポジトリは GitHub の最新を取り込む）し、`docker compose up -d --force-recreate` で `test` を作り直した。`src/` の 4 つを写してビルド、localization_tools を `sync.sh push`、`.bash_history`・`.rviz2`・`.ssh/known_hosts`・`.gitconfig` を戻し、DDS が 127.0.0.1 の UDP だけ（TCP なし）・ekf_localizer のテスト 39 個が通ることを確かめた。VS Code の `.vscode-server` は戻していない（つなぎ直すと作られる））：`localization_bringup` は既定で `humble`（build-arg `BRINGUP_BRANCH`）、
+- イメージ `localizer_maehara:latest`（`docker/`（localizer_docker）113a2e7。2026-11-09 に README の変更で同じ手順で再ビルドして `test` を作り直した（ekf_localizer のテスト 40 個、DDS は 127.0.0.1 の UDP だけ）。2026-11-07 に README・aliases の変更で再ビルドして `test` を作り直した（同じ手順、ekf_localizer のテスト 40 個）。2026-10-27 にユーザー指示で再ビルド（`docker compose build`。各リポジトリは GitHub の最新を取り込む）し、`docker compose up -d --force-recreate` で `test` を作り直した。`src/` の 4 つを写してビルド、localization_tools を `sync.sh push`、`.bash_history`・`.rviz2`・`.ssh/known_hosts`・`.gitconfig` を戻し、DDS が 127.0.0.1 の UDP だけ（TCP なし）・ekf_localizer のテスト 39 個が通ることを確かめた。VS Code の `.vscode-server` は戻していない（つなぎ直すと作られる））：`localization_bringup` は既定で `humble`（build-arg `BRINGUP_BRANCH`）、
   `localization_tools`（`main`）を `/root/ros2_ws/localization_tools` に clone、録画と図の置き場所 `/root/ros2_ws/bags/{gazebo,real}`・
   `/root/ros2_ws/fig`、地図 `/root/ros2_ws/map`（どれも `COLCON_IGNORE` 入り。`savemap`・地図選択も `/root/ros2_ws/map`）を作る。
   開発中のものは `src/` から `docker cp`（`localization_tools` は `sync.sh push`）で上書きする。
@@ -236,7 +236,7 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
 ## アーキテクチャ（NDT + EKF）
 
 `/root/ros2_ws/src` のリポジトリ（すべて `MaeharaTakumi/*` の `humble`）：`lidarslam_ros2`（SLAM・地図作成）、
-`lidar_localization`（パッケージ名 `pcl_localization_ros2`。NDT と `cloud_stamp_corrector`）、`ekf_localizer`（11 状態 EKF）、
+`lidar_localization`（パッケージ名 `pcl_localization_ros2`。NDT）、`ekf_localizer`（11 状態 EKF）、
 `whill_odometry`（実機の車輪オドメトリ）、`localization_bringup`（launch・環境設定とオドメトリの共分散などの Python ノード）。
 詳細は `localization_bringup/docs/node_graph.md`（ノード・トピック・QoS・TF 表）と `ekf_localizer/docs/ekf_flow.md`。
 
@@ -245,11 +245,10 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
 - **設定の階層**：`localization.launch.py` が `param/env/<env>.yaml`（ROS のパラメータファイルではなく launch が読む）から
   起動するノードとトピック（`nodes`）・フレーム・`static_tfs`・`stamp_mode` を決める。
   **`nodes.<ノード名>`**（2026-10-22、ユーザー指示。それまでの `topics`・`launch_odometry`・`joint_state_odometry` を置き換えた）：`enable` で起動するか
-  （全ノード書く。`cloud_stamp_corrector` は書かず `stamp_mode` で決まる。launch 引数 `use_ekf:=`（ekf_localizer と odom_covariance）・`rviz:=` が優先、空なら環境ファイル）、
+  （全ノード書く。launch 引数 `use_ekf:=`（ekf_localizer と odom_covariance）・`rviz:=` が優先、空なら環境ファイル）、
   `topics` に「ノードの中の名前: 実際の名前」を**全部書く**（launch はそのまま remap に渡す。つなぐときは両側を同じ名前にする。`/tf`・`/tf_static`・`/clock` は対象外）。
   ノードの処理は単純にする方針（ユーザー指示）で、ノードのコードは変えず、ekf_localizer の `*_topic`・whill_odometry の `input_topic_name` は launch が中の名前に固定して remap する。
-  止めたノードの出力は録画や別の PC から来るものとして、つなぎ方は変えない。例外は 2 つ：EKF を起動しないと NDT が TF を出す（RViz の `/tf` も付け替えない）、
-  `cloud_stamp_corrector` を起動するとほかのノードでその `input` と同じ名前を `output` に付け替える。パラメータは
+  止めたノードの出力は録画や別の PC から来るものとして、つなぎ方は変えない。例外は EKF を起動しないと NDT が TF を出すこと（RViz の `/tf` も付け替えない）。パラメータは
   各パッケージの `param/*.yaml` → env の `parameters.<ノード名>` → launch が計算した値、の順に上書き。
   **上書きはノード名の節の一時 yaml（`_scoped`）で渡す**。辞書のまま渡すと launch_ros が `/**` の節にし、rclcpp は `/**` を先、
   ノード名の節を後に当てるので、パッケージの yaml にノード名の節があるパラメータは env で変わらなかった（2026-10-12 に直した）。
@@ -275,9 +274,9 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
 - **MATLAB が使う姿勢と点群**（2026-10-26、ユーザー指示。`dev_log.md` の 68。61〜67 は ekf_localizer の MATLAB 用の出力 `/localization/base_pose`・
   `vlp16_pose`・`vlp16_points` を購読していたころで、それらはやめた）：MATLAB の CR_debug は sensor(1) で `/velodyne_points` をそのまま購読し、
   `ros2tf`（`/tf`・`/tf_static` を C++ 側のバッファに既定 10 s 溜める）から、sensor(5)（Matching）は最新の map → base（後輪間中心。base は Gazebo が
-  `base_footprint`、実機が `base_link`）を `Plant` に、sensor(8) は点群の stamp の時刻の map → velodyne（事前推定値。NDT の初期値と同じ値）を
-  `data.LIDAR_pose` に入れる（`ROS2CommManager` が `ros2tf` を作り `SensorFetcher.setTfTree` で渡す）。その時刻より後の TF がまだ無ければ待たずに前の組を使い
-  （`data.LIDAR_waiting`）、次の周期にその時点の最新の点群で引き直す（ユーザーが選んだ）。共分散は無い。sensor(8) を書いていない main では false として動く。
+  `base_footprint`、実機が `base_link`）を `Plant` に、点群の stamp の時刻の map → velodyne（事前推定値。NDT の初期値と同じ値）を
+  `data.LIDAR_pose` に入れる（2026-11-09、ユーザー指示で sensor(8) を廃止して sensor(5) にまとめた。時刻はそのまま）（`ROS2CommManager` が `ros2tf` を作り `SensorFetcher.setTfTree` で渡す）。新しい点群の stamp の時刻の TF が引けないときと、今の ROS の時刻と点群の stamp の差が
+  `lidarStampThreshold`（既定 0.1 s、`cfg.lidarStampThreshold` で変えられる）以上のときは、前の組を使わず最新の TF と組にする（`data.LIDAR_latest_tf`。点群を常に最新にするため。2026-11-09、ユーザー指示）。TF が 1 つも引けないときだけ前の組のまま（`data.LIDAR_waiting`）。共分散は無い。CR_debug の実機の `/ekf_pose` の購読（sensor(4)）はやめた（実機で sensor(4) を true にするとエラー）。
   記録の図 `+plotter/myplotResult.m` は `Position`・`Angle`（Plant）、`Position_LiDAR`・`Angle_LiDAR`・`Trajectory`・`LiDAR_pair_interval`（`dev_log.md` の 63）。
   点群地図と取得点群の動画は `+plotter/myplotPointCloudVideo.m`（点群は同じ stamp の `LIDAR_pose` で直す。車両中心（後輪間中心）は黒い点。main.m の
   `makeVideo`・`mapFile`。`dev_log.md` の 64・65）。`data.Now` はデータを受け取った直後の ROS の時刻（Gazebo・録画の再生は MATLAB のノードの
@@ -314,7 +313,7 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   ゲートは `gate_ndt` 1 つ（`ekf.yaml` は 1.0e5 で実質無効）。4 段の更新・ロックアウト・`gate_horizontal`・`gate_1d`・`lockout_count` は
   削除した。今の R_ndt では base の x, y の σ が約 22 cm・roll/pitch との相関約 0.9 になるので、相関を捨てると結果が変わる。
   再生の結果は LiDAR の姿勢で観測していたときと同じ程度（`dev_log.md` の 19）。`/ekf_pose` の共分散は `lidarPoseJacobian` で出す。
-- **ekf_localizer の当時の動かし方**（2026-10-12、commit 0fb1488・2739d6d、GitHub の humble に push 済み）：`time_source`（`stamp` 既定 / `receipt`）と
+- **ekf_localizer の当時の動かし方**（2026-10-12、commit 0fb1488・2739d6d、GitHub の humble に push 済み。`time_source` と点群の購読は 2026-11-09 にやめた）：`time_source`（`stamp` 既定 / `receipt`）と
   `publish_trigger: update`（NDT・オドメトリで更新するたびに、その時刻の事後推定値を TF・`/ekf_pose` に出す）を追加。
   `receipt` はオドメトリを受信した時刻、NDT はその点群（`points_topic`）を受信した時刻にする（ekf_localizer が点群も受け取って stamp ごとに
   覚える）。`/ndt_pose` の受信時刻にすると NDT の計算の遅れ（56〜67 ms）で大きく悪化した（スコア 6.9）。
@@ -352,8 +351,7 @@ whill_odometry のコードの既定は red、`param/odometry.yaml`（2026-10-15
 **`stamp_mode`** でそろえて決める（2026-10-15、ユーザー指示で `cloud_stamp_correction` を `clock_synced: true / false / auto` に置き換え、
 2026-10-22 にユーザー指示でノードと同じ名前の `stamp_mode` にした。`wall` ではなく `receipt` もユーザーが選んだ）：
 `stamp`（実機・Gazebo とも今はこれ）は stamp をそのまま、`receipt` は受信した時刻、`auto` は |受信した時刻 − stamp| が
-`clock_offset_threshold`（既定 0.1 s）以上なら受信した時刻・小さければ stamp（1 つずつ判断）。launch は値をそのまま、点群の `cloud_stamp_corrector`
-（lidar_localization。`mode`。`stamp` のときは起動しない）とオドメトリの `odom_covariance` の `stamp_mode` に入れる。
+`clock_offset_threshold`（既定 0.1 s）以上なら受信した時刻・小さければ stamp（1 つずつ判断）。点群のトピック自体の stamp は変えず、EKF の計算にだけ使う（2026-11-09、ユーザー指示。`cloud_stamp_corrector` と `/localization/points` をやめた）：launch は NDT の `scan_time_source`（`stamp` は `message`、ほかは同じ名前。`/ndt_pose` の stamp と TF の初期値を引く時刻）とオドメトリの `odom_covariance` の `stamp_mode`（`/localization/odom` の stamp）に入れる。
 環境ファイルに `clock_synced` が残っていると launch はエラーで止まる。
 sim time で `/clock` を受け取る前（今の時刻が 0）は stamp のまま（直す前は Gazebo の起動直後にオドメトリの時刻を 0 にしていた）。
 Gazebo を `auto` で走らせると、受信した時刻 − stamp は点群 −4〜+7 ms、オドメトリ 0 ms で、受信した時刻に切り替わることは無かった。

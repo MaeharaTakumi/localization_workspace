@@ -1916,3 +1916,29 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 ![manual_control の動画（t = 47.88 s）](dev_log_images/pointcloud_video_manual_control_20261107.png)
 
 ![testRun の動画（t = 16.58 s）](dev_log_images/pointcloud_video_testRun_20261107.png)
+
+### 79. 使っていないノード・トピックの廃止と、MATLAB の sensor(8) を sensor(5) にまとめる
+
+- 目的（ユーザー指示）：使っていない `/tf_rviz`・`/wheelchair/accel`・`cloud_stamp_corrector` と `/localization/points`・ekf_localizer の点群の購読・MATLAB の CR_debug の `/ekf_pose` の購読をやめる。
+  sensor(8) を廃止して sensor(5) に後輪間中心と LiDAR の位置をまとめる。点群は可能な限り最新を使う。
+- やったこと：
+  - **時刻**（ユーザー指示：点群のトピックの stamp は変えず、EKF の計算にだけ使う）：`stamp_mode` は残した。launch が NDT の `scan_time_source`（`stamp` → `message`、`receipt`・`auto` は同じ名前）と
+    `odom_covariance` の `stamp_mode` に入れる。NDT は受信した時刻を `/ndt_pose` の stamp と TF の初期値を引く時刻に使い、`/velodyne_points` はそのまま。NDT に `auto`（`scan_time_auto_threshold`、launch が `clock_offset_threshold` を入れる）を足した。
+  - lidar_localization：`/tf_rviz`（`publish_rviz_tf`）と `cloud_stamp_corrector` を消した。単体の launch の RViz の `/tf` の付け替えも消した。
+  - whill_odometry：`/wheelchair/accel` と、加速度だけに使っていた `accel_time_constant`・`input_timeout` を消した。
+  - ekf_localizer：点群の購読・`time_source`・`points_topic` を消した。観測の時刻は常にメッセージの stamp（`measurementTime`）。
+  - localization_bringup：`nodes.cloud_stamp_corrector`（残っていると launch がエラー）と環境ファイルの該当行を消した。`node_graph.md` の `/path` の購読者（RViz には表示が無い）と `/ekf_pose` の説明も今に合わせた。
+  - MATLAB（`cr_debug`）：sensor(8) を廃止。`sensor(5) = true` で `Plant`（最新の map → base）と `data.LIDAR_pose`（点群の stamp の map → velodyne）が入る（時刻は今まで通り）。新しい点群の stamp の TF が引けないときと、
+    |今の時刻 − 点群の stamp| が `lidarStampThreshold`（既定 0.1 s。`cfg.lidarStampThreshold`）以上のときは、前の組を使わず最新の TF で組にする（`data.LIDAR_latest_tf`）。TF が 1 つも無いときだけ前の組のまま（`LIDAR_waiting`）。
+    実機の `/ekf_pose` の購読をやめ、CR_debug の実機で sensor(4) を true にするとエラーにした。`LiDAR_pair_interval` の図は点群の stamp で描く（最新の TF の組では `LIDAR_pose.Stamp` が点群の stamp と違うため）。
+- 結果：
+  - ekf_localizer のテスト 40 個は通った。実機 blue の launch で `/tf_rviz`・`/wheelchair/accel`・`/localization/points` は無く、NDT の `scan_time_source` は `message`。
+  - Gazebo の `test_spin` を再生して MATLAB（`replay_matlab.sh`）：1333 周期で新しい組 486、最新の TF で組にしたもの 1、TF が無かった周期 18（推定の開始前）。図・動画は作れた。
+    `lidarStampThreshold` を 0.001 s にした確認では、新しい組 190 のうち 182 が最新の TF の組になった（`LIDAR_pose.Stamp` と点群の stamp の差は最大 0.101 s）。
+  - `stamp_mode` ごとの再生（`spin360_w1_ekf2`、各 1 回、NDT 192 回）：定常の yaw 誤差は `stamp` 0.224°・`receipt` 0.241°・`auto` 0.169°、xy 0.047・0.046・0.046 m（1 回ずつなので差はばらつきの範囲）。
+    `auto` で受信した時刻に切り替わることは無かった。
+- 過去の候補ファイル（`eval/batches/` の `time_source` を書いたもの）は残した。今は `time_source` のパラメータが無いので、`receipt` の候補を流しても stamp で動く。
+
+![Gazebo test_spin：新しい組の間隔（点群の stamp の差）](dev_log_images/matlab_sensor5_LiDAR_pair_interval.png)
+
+![Gazebo test_spin：後輪間中心と点群の stamp の LiDAR の軌跡](dev_log_images/matlab_sensor5_Trajectory.png)
