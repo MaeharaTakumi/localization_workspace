@@ -1977,6 +1977,6 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - ekf_localizer のテスト 43 個は通った。4 つの環境の起動ログで値を確かめた。
   - Gazebo の `spin360_w1_ekf2` を各 4 回再生（`eval/batches/batch_qrp_default.json`、`eval/results/results_qrp_default.jsonl`）。平均（変更前 → 変更後）：
     定常の回転中の yaw 誤差 0.20 → 0.90°、NDT の angle_diff 0.22 → 1.33°、xy 誤差 0.046 → 0.058 m、回転開始の yaw の跳ね 1.27 → 2.05°、NDT が解いた回数 192 → 182（165〜190）。範囲が重ならない指標が多い。
-    **Gazebo は blue の R_ndt で明らかに悪くなる**（R_ndt が約 50〜2400 分の 1 で、遅れて届く NDT に飛びついて振動する。15 と同じ傾向）。red・white の録画の再生と実車では確かめていない。
+    **Gazebo は blue の R_ndt で明らかに悪くなる**（R_ndt が約 50〜500 分の 1 になる。遅れて届く NDT に飛びついて振動する 15 と同じ傾向と考えられるが、原因は切り分けていない）。red・white の録画の再生と実車では確かめていない。
 
 ![Gazebo の再生：Q・P_init・R_ndt の既定（変更前と blue の値）](dev_log_images/qrp_default_runs.png)
