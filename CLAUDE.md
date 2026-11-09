@@ -120,7 +120,7 @@ ROS 2 Humble / Ubuntu 22.04。ホストに ROS は無いので、ビルド・テ
 - **Gazebo コンテナ `20261002`（8843520b410f）のファイルは、ユーザーの許可なしに編集しない**（読むのは可）。
   問題を Gazebo 側の設定変更で解決しない。
 - **既存の自作 EKF（`ekf_localizer`）とその起動方法を壊さない。** `ekf_localizer` リポジトリは**ユーザーが指示したときだけ**変更する
-  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした。続けて `/tf_ndt_update`（`publish_ndt_update_tf`）もやめ、`publish_tf` もやめて TF を常に配信するようにした。2026-10-27：TF を周期の刻みの stamp で先の刻みまで送る `tf_future_steps`・`tf_past_steps` を足した（既定 0 で今と同じ。`dev_log.md` の 72）。2026-11-05：状態に v_z・omega_roll・omega_pitch を足して 11 状態にした（`dev_log.md` の 74）。2026-11-09：点群の購読・`time_source`・`points_topic` をやめ、観測の時刻を常にメッセージの stamp にした（`dev_log.md` の 79）。2026-11-09：オドメトリの観測ノイズの計算を `odom_covariance` から移し、`odom_covariance_source` をやめた（`dev_log.md` の 80））。
+  （2026-10-12：予測を水平面の中点法に、NDT の観測を base の姿勢にした。今の式の残し方を聞き、ユーザーの判断で humble を直接変更。2026-10-19：NDT で更新した直後の値を `/tf_ndt_update` に出す `publish_ndt_update_tf` を足した。2026-10-23：MATLAB 用の出力 `base_pose`・`vlp16_pose`・`vlp16_points` を足した。2026-10-26：`publish_trigger` とその 3 つをやめ、`predict_rate` 50 Hz の `/tf` だけにした。続けて `/tf_ndt_update`（`publish_ndt_update_tf`）もやめ、`publish_tf` もやめて TF を常に配信するようにした。2026-10-27：TF を周期の刻みの stamp で先の刻みまで送る `tf_future_steps`・`tf_past_steps` を足した（既定 0 で今と同じ。`dev_log.md` の 72）。2026-11-05：状態に v_z・omega_roll・omega_pitch を足して 11 状態にした（`dev_log.md` の 74）。2026-11-09：点群の購読・`time_source`・`points_topic` をやめ、観測の時刻を常にメッセージの stamp にした（`dev_log.md` の 79）。2026-11-09：オドメトリの観測ノイズの計算を `odom_covariance` から移し、`odom_covariance_source` をやめた（`dev_log.md` の 80）。2026-11-09：Q・P_init・R_ndt の既定を実機 blue の値にした（`dev_log.md` の 82））。
   （robot_localization に切り替える機能は 2026-10-15 にユーザー指示で廃止した。下の「robot_localization（廃止）」）
 - **曖昧な点は自分で判断せず、必ずユーザーに質問する。**
 - **作業がひと区切りついたら（動作を確かめ、開発ログ・README を直したら）、確認を取らずに commit して push する**（2026-10-16、ユーザー指示。
@@ -301,8 +301,8 @@ ros2 launch localization_bringup localization.launch.py env:=white map_path:=/ro
   y += v_xy dt sin(yaw_m)、yaw += omega_yaw dt。roll, pitch による v_xy, omega_yaw の分解はしない。z += v_z dt、roll += omega_roll dt、
   pitch += omega_pitch dt（線形なので中点法でも厳密）。v_z は地図の z の速度、omega_roll・omega_pitch はオイラー角の変化率。速度 5 つはランダムウォーク。
   v_z・omega_roll・omega_pitch の `Q`・`P_init` が 0 なら、その 3 つは 0 のまま、z, roll, pitch は Q のノイズだけで足す前の 8 状態と同じ
-  （同じ観測で丸め誤差まで一致を確認。`dev_log.md` の 74）。**今の値（2026-11-07、ユーザーが決めた。`dev_log.md` の 76）：`ekf.yaml`・Gazebo・red・white は 3 つとも 0、
-  実機 blue（`blue.yaml`）は omega_roll・omega_pitch 0.1（`P_init` 0.01）・v_z 0**。blue の録画で点群の時刻の予測値 − NDT の解の roll・pitch が最小
+  （同じ観測で丸め誤差まで一致を確認。`dev_log.md` の 74）。**今の値（blue の値は 2026-11-07 にユーザーが決めた。`dev_log.md` の 76。2026-11-09 にユーザー指示で `ekf.yaml` の Q・P_init・R_ndt の既定を blue の値にした。`dev_log.md` の 82）：`ekf.yaml`・red・white・blue は
+  omega_roll・omega_pitch 0.1（`P_init` 0.01）・v_z 0、Gazebo は Q が 3 つとも 0（`gazebo.yaml`）で `P_init`・`R_ndt` は `ekf.yaml` の値**。blue の録画で点群の時刻の予測値 − NDT の解の roll・pitch が最小
   （調整に使っていない spin5 で −9 %・−5 %）。v_z は Q を大きくすると z が悪くなった。Gazebo は真の roll・pitch がほぼ動かず、omega 0.1 で
   予測値 − 真値の roll・pitch が 15 % 悪くなる。実機の改善が本当の傾きの動きか NDT の誤差を追っただけかは、真値が無いので分からない。
   `/ekf_odom` は v_xy・omega_yaw だけ（ユーザーが選んだ）。

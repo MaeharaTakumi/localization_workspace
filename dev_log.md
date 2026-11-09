@@ -1966,3 +1966,17 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 - 目的（ユーザー指示）：オドメトリの R を ekf_localizer が計算するようになり（80）、どこからも読まれなくなった `var_v`・`var_omega` をやめる。
 - やったこと：whill_odometry のパラメータと、`/wheelchair/odom` の `twist.covariance` を埋める処理を消した（Gazebo の `/wheelchair/odom` と同じく共分散 0。`pose.covariance` はそのまま）。
 - 結果：ビルドは通った。`motor_speed` に右 −3.6・左 1.8 km/h を入れると v 0.75 m/s・omega 1.0101 rad/s（式どおり）、`twist.covariance` はすべて 0、`var_v`・`var_omega` のパラメータは無い。実機では確かめていない。
+
+### 82. ekf_localizer の Q・P_init・R_ndt の既定を実機 blue の値にする
+
+- 目的（ユーザー指示）：Q・R・P の既定を今の blue の値にする。
+- やったこと：`ekf.yaml`・コードの既定（`declare_parameter`・`EkfCore::Params`・`NdtModel::Params`）・README を blue の値にした。
+  Q [0.05, 0.05, 0.005, 0.05, 0.05, 0.05, 0.05, 0, 0.1, 0.1, 10]、P_init [0.2, 0.2, 0.2, 0.01, 0.01, 0.01, 0.01, 0, 0.01, 0.01, 0.01]、R_ndt [2.08e-4, 1.55e-4, 9.61e-5, 5.89e-5, 6.32e-5, 1.23e-5]（R_odom は 80 で済み）。環境ファイルは変えていない。
+- 環境への影響：red・white は上書きが無いので Q・P_init・R_ndt とも blue の値になった。Gazebo は `gazebo.yaml` の Q のまま、P_init・R_ndt が blue の値になった。blue は今までと同じ。
+- 結果：
+  - ekf_localizer のテスト 43 個は通った。4 つの環境の起動ログで値を確かめた。
+  - Gazebo の `spin360_w1_ekf2` を各 4 回再生（`eval/batches/batch_qrp_default.json`、`eval/results/results_qrp_default.jsonl`）。平均（変更前 → 変更後）：
+    定常の回転中の yaw 誤差 0.20 → 0.90°、NDT の angle_diff 0.22 → 1.33°、xy 誤差 0.046 → 0.058 m、回転開始の yaw の跳ね 1.27 → 2.05°、NDT が解いた回数 192 → 182（165〜190）。範囲が重ならない指標が多い。
+    **Gazebo は blue の R_ndt で明らかに悪くなる**（R_ndt が約 50〜2400 分の 1 で、遅れて届く NDT に飛びついて振動する。15 と同じ傾向）。red・white の録画の再生と実車では確かめていない。
+
+![Gazebo の再生：Q・P_init・R_ndt の既定（変更前と blue の値）](dev_log_images/qrp_default_runs.png)
