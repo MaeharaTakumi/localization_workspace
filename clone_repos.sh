@@ -11,6 +11,6 @@ PY
     echo "skip  $path（ある）"
   else
     mkdir -p "$(dirname "$path")"
-    git clone -b "$branch" "$url" "$path"
+    git clone --recursive -b "$branch" "$url" "$path"   # lidarslam_ros2 はサブモジュール（ndt_omp_ros2）を持つ
   fi
 done

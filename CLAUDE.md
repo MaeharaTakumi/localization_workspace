@@ -16,7 +16,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **作業がひと区切りついたら（動作を確かめ、開発ログ・README を直したら）、確認を取らずに commit して push する**
   （変更したリポジトリごと。push したら commit を報告する）。
 - **パラメータの置き場所**（2026-11-11、ユーザー指示）：各パッケージ（ekf_localizer・lidar_localization・whill_odometry）はパラメータファイルを
-  持たない。環境ごとの値は localization_bringup の `param/<env>/<ノード名>.yaml` に**全項目を書く**。yaml の無いノード・書いていない項目、
+  持たない。環境ごとの値は localization_bringup の `param/<env>/<ノード名>.yaml`（SLAM は `lidarslam.yaml`）に**全項目を書く**
+  （lidarslam_ros2 のパッケージ側の `lidarslam/param/lidarslam.yaml` はパッケージ単体の launch 用に残す。2026-11-12、ユーザー指示）。yaml の無いノード・書いていない項目、
   env を指定しない起動は、各ノードのコードの既定値で動く（コードの既定は今の値に合わせてある）。
 - **変更したら、実行する前に毎回反映する**：`src/` のリポジトリを変えたら、`test` で何かを実行する前に `./deploy.sh <リポジトリ>`
   （写す・chown・`colcon build`。localization_tools は `sync.sh push`）。ファイルを消した・名前を変えたときは `--mirror`。
@@ -44,12 +45,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |---|---|---|---|
 | `localization_bringup` | humble | 同じ | launch と環境ごとの設定 `param/<env>/`（各ノードの yaml もここ） |
 | `lidar_localization` | humble | `pcl_localization_ros2` | NDT |
+| `lidarslam_ros2` | humble | `scanmatcher`・`graph_based_slam`・`lidarslam`・`lidarslam_msgs`・`ndt_omp_ros2`（サブモジュール） | SLAM（地図作り）。2026-11-12 から `src/` に置く |
 | `ekf_localizer` | humble | 同じ | 11 状態 EKF（ROS 非依存の本体 + ノード、gtest 3 つ） |
 | `whill_odometry` | humble | 同じ | 実機の車輪オドメトリ |
 | `localization_tools` | main | （ROS のパッケージではない） | 検証・調整・描画・テスト走行・パラメータ推定 |
 | `whill_common_matlab-main _ndtDebug` | `cr_debug` | — | MATLAB（下記） |
 
-- `lidarslam_ros2`（SLAM・地図作成）はイメージにだけある（`src/` には置いていない）。`rviz2_bag` は外部のリポジトリ。
+- `rviz2_bag` は外部のリポジトリ。
 - **MATLAB**（`src/whill_common_matlab-main _ndtDebug`）：`acsl-tcu/whill_common_matlab` のフォーク `MaeharaTakumi/whill_common_matlab`
   （`origin` がフォーク、`upstream` が元）のブランチ `cr_debug`。フォルダ名に空白があるので `repos.yaml` には入れていない。
   CRLF・実行権付きの .m があるので、このフォルダの `.git` だけ `core.fileMode false` と `.git/info/attributes` の `* -text`。
@@ -88,7 +90,8 @@ build-arg `BRINGUP_BRANCH` で bringup だけ別のブランチにできる）�
 （`COLCON_IGNORE` 入り）、`/root/.bash_aliases`（`docker/src/aliases.txt`）、`/root/ros2_ws/README.md`（`docker/README.md`）。
 
 コマンド（`.bash_aliases`）：`localization [red|blue|white|gazebo] [地図]`（既定 red。地図は名前でもパスでもよく、省くと選ぶ画面）、
-`ekf_params`・`lclz_params`・`odom_params [色]`（`param/<色>/` のノードの yaml を開く）、
+`lidarslam [red|blue|white|gazebo]`（SLAM。既定 red）・`savemap`（`lidarslam` と同じディレクトリで実行）、
+`ekf_params`・`lclz_params`・`odom_params`・`slam_params [色]`（`param/<色>/` のノードの yaml を開く）、
 `scanmatch_cli <地図> [env]`、`drive`・`drive_list`・`bags_list`、`calibration`・`calibrate`・`calibration_plan`・`calibration_params`、`savemap`。
 
 ## よく使うコマンド
@@ -96,16 +99,17 @@ build-arg `BRINGUP_BRANCH` で bringup だけ別のブランチにできる）�
 コンテナ内の ROS 環境は `~/.bashrc` で読み込まれるので、`docker exec` では `bash -ic` を使う。
 
 ```bash
-./deploy.sh                                # src/ の 4 つを写してビルド + localization_tools を sync.sh push（ホストで実行）
+./deploy.sh                                # src/ の 5 つを写してビルド + localization_tools を sync.sh push（ホストで実行）
 ./deploy.sh --test ekf_localizer           # ビルドとテスト（gtest：test_ekf_models・test_lagged_ekf・test_tf_grid）
 ./deploy.sh --mirror localization_bringup  # コンテナ側を消してから写す（消した・名前を変えたファイルを残さない）
 
 # Gazebo の起動（20261002 の履歴と同じ。ファイルは編集しない）。止めるときは pkill -INT -f "ros2 launch connection_wheelchair"
 docker exec -d 20261002 bash -ic 'ros2 launch connection_wheelchair connection_wheelchair.launch.py > /tmp/claude_gazebo_launch.log 2>&1'
 
-# 自己位置推定の起動（コンテナの中）。引数：env（gazebo・red・blue・white か yaml のパス。既定 red）、use_ekf、map_path、rviz
+# 自己位置推定の起動（コンテナの中）。引数：env（gazebo・red・blue・white かフォルダのパス）、use_ekf、map_path、rviz、matcher（ndt・lidarslam）
 ros2 launch localization_bringup localization.launch.py env:=gazebo
 ros2 launch localization_bringup localization.launch.py env:=blue map_path:=/root/ros2_ws/map/<地図>.pcd
+ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（matcher:=lidarslam で localization.launch.py を読むだけ）
 ```
 
 - **`docker exec ... bash -ic` の中で `ros2 launch ... &` とバックグラウンドで起動しない。** SIGINT が無視されてノードが残る（同じ名前のノードが
@@ -195,6 +199,7 @@ ros2 launch localization_bringup localization.launch.py env:=blue map_path:=/roo
 
 ```
 点群 ─▶ pcl_localization (NDT) ─▶ /ndt_pose ─▶ ekf_localizer ◀─ /wheelchair/odom ◀─ whill_odometry（実機）・Gazebo
+        （SLAM のときは scan_matcher ─▶ /slam_pose。/map_array ─▶ graph_based_slam）
               ▲                                      │  （倍率 odom_scale・時刻 odom_stamp_mode は EKF）
               └── TF map→LiDAR（点群の時刻）◀────────┘ /tf map→base（50 Hz）, /ekf_pose, /ekf_odom
 ```
@@ -203,17 +208,28 @@ ros2 launch localization_bringup localization.launch.py env:=blue map_path:=/roo
   - `env.yaml`（launch が読む）：`use_sim_time`、`nodes`（`whill_odometry`・`pcl_localization`・`ekf_localizer`・`rviz` を true / false）、`static_tfs`。
     launch 引数 `use_ekf:=`・`rviz:=` が優先。**env を付けないと NDT と EKF だけを、yaml を渡さずコードの既定値で起動する**（取付・地図・sim time が無いので推定には使えない）。
   - `<ノード名>.yaml`（`ekf_localizer`・`pcl_localization`・`whill_odometry`）：普通の ROS のパラメータファイル。全項目を書く（無い項目はコードの既定値）。
-  - launch が入れるのは `use_sim_time`、NDT の `publish_tf`・`use_tf_init_guess`（EKF を起動するときは false・true）、`map_path`（引数を付けたとき）だけ。
+  - launch が入れるのは `use_sim_time`、NDT・scan_matcher の `publish_tf`（いつも false）・`use_tf_init_guess`（EKF を起動するときは true）、`map_path`（引数を付けたとき）だけ。
     yaml を読んで重ね、**ノード名の節の一時 yaml**（`_scoped`、整数と小数が混ざった数のリストは小数にそろえる）で渡す。一時 yaml は `/tmp/localization_bringup_*/`。
     起動ログに各ノードが読んだ yaml（無ければ `code defaults`）が出る。効いた値は `ros2 param dump /<ノード名>` で確かめる。
   - トピックは各ノードの名前のままでつながる。launch が付け替えるのは ekf_localizer の `odom` → `/wheelchair/odom` と NDT の `pcl_pose` → `/current_pose`
-    （RViz と、研究室の MATLAB（whill_common_matlab の CR）の実機モードが購読する名前）だけ。
+    （RViz と、研究室の MATLAB（whill_common_matlab の CR）の実機モードが購読する名前）、SLAM のときの scan_matcher の `input_cloud` → `/velodyne_points` と
+    ekf_localizer の `ndt_pose` → `/slam_pose`、`pose_to_tf` の `pose` だけ。
+  - **TF は EKF が出す**。NDT・scan_matcher には launch がいつも `publish_tf: false`、`use_tf_init_guess` = EKF を起動するか、を入れる。
+    **EKF を起動しないときは `pose_to_tf`**（bringup の `scripts/pose_to_tf.py`）が解（map → LiDAR）に取付の逆を掛けて map → base を解の stamp で出す
+    （フレームは `ekf_localizer.yaml` の値。2026-11-12 から。それまでは NDT が自分で出していた。`dev_log.md` の 85）。
+- **SLAM（`lidarslam.launch.py`、コマンド `lidarslam`。2026-11-12、`dev_log.md` の 85）**：`matcher:=lidarslam` で pcl_localization の代わりに lidarslam_ros2 の
+  scan_matcher（逐次の位置合わせと地図作り）と graph_based_slam（ループ閉じ込み、savemap のサービス `/map_save`）を起動する。環境は NDT と同じ
+  `param/<env>/`、SLAM のパラメータは `lidarslam.yaml`（初期姿勢は `pcl_localization.yaml` と同じ値）。scan_matcher への変更は最小限：
+  `use_tf_init_guess`・`tf_init_guess_timeout`（NDT と同じ名前・既定値。点群の時刻の map → `robot_frame_id` を TF から引く）と、NDT の `/ndt_pose` と同じ型・QoS の
+  `/slam_pose`。`robot_frame_id: velodyne` で解を LiDAR の姿勢にする（点群は変換しない）。EKF は `/slam_pose` を NDT の解と同じに扱う（`R_ndt` も同じ）。
+  graph_based_slam で直した姿勢は scan_matcher・EKF には戻らない（直るのは保存する地図だけ）。RViz は lidarslam の `mapping.rviz`。
+  `/current_pose` は scan_matcher のもとの PoseStamped（MATLAB CR の sensor 4 の型）。
   - 古い形（`param/env/<名前>.yaml`、`odom_relay`・`odom_covariance`・`joint_state_odometry`、env の `topics`・`parameters`・`stamp_mode`）はやめた。
 - **時刻**（`stamp`・`receipt`・`auto`。auto は |受け取った時刻 − stamp| が閾値以上なら受け取った時刻）：点群は NDT の `stamp_mode`・`stamp_auto_threshold`
   （`/ndt_pose` の stamp と初期値の TF を引く時刻。点群のトピック自体の stamp は変えない。EKF は `/ndt_pose` の stamp を使う。`/ndt_pose` の受信時刻は
   NDT の計算の遅れを含むので使わない（ユーザー指示。`dev_log.md` の 20））、オドメトリは ekf_localizer の `odom_stamp_mode`・`odom_stamp_auto_threshold`
   （EKF が受け取った時刻）。sim time で `/clock` を受け取る前は stamp のまま。今は実機・Gazebo とも `stamp`。
-- **NDT と EKF は TF で循環している**：`use_ekf:=true` のとき NDT は `publish_tf: false`・`use_tf_init_guess: true` で、**点群の stamp** の map→LiDAR を
+- **NDT（SLAM では scan_matcher）と EKF は TF で循環している**：`use_ekf:=true` のとき NDT は `use_tf_init_guess: true` で、**点群の stamp** の map→LiDAR を
   TF から引いて初期値にする（`tf_init_guess_timeout` 0.05 s。引けないとき（EKF の初期化前、`/initialpose` から 1 秒間）は前回の解）。
 - **`/ndt_pose`**：map→**LiDAR**、stamp は点群の取得時刻、共分散は未設定（0）。**`/initialpose`** も NDT は LiDAR の姿勢として扱う（RViz の 2D Pose Estimate は z=0）。
   NDT の `/path` は配信しない（ソースでコメントアウト。`dev_log.md` の 83）。

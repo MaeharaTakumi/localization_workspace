@@ -19,10 +19,11 @@ here=$(cd "$(dirname "$0")" && pwd)
 LOC=${LOC:-test}
 WS=/root/ros2_ws
 TOOLS=localization_tools
-# リポジトリ（src/ の下の名前）: colcon のパッケージ名
+# リポジトリ（src/ の下の名前）: colcon のパッケージ名（複数あるときは空白で区切る）
 declare -A PACKAGES=(
   [ekf_localizer]=ekf_localizer
   [lidar_localization]=pcl_localization_ros2
+  [lidarslam_ros2]="lidarslam_msgs ndt_omp_ros2 scanmatcher graph_based_slam lidarslam"
   [localization_bringup]=localization_bringup
   [whill_odometry]=whill_odometry
 )
@@ -49,11 +50,14 @@ for repo in "${repos[@]}"; do
   fi
   [ -n "${PACKAGES[$repo]:-}" ] || { echo "unknown repository: $repo (available: ${!PACKAGES[*]} $TOOLS)"; exit 1; }
   echo "== copy src/$repo -> $LOC:$WS/src/$repo"
-  [ $mirror = 0 ] || docker exec "$LOC" rm -rf "$WS/src/$repo" "$WS/build/${PACKAGES[$repo]}" "$WS/install/${PACKAGES[$repo]}"
+  if [ $mirror = 1 ]; then
+    docker exec "$LOC" rm -rf "$WS/src/$repo"
+    for p in ${PACKAGES[$repo]}; do docker exec "$LOC" rm -rf "$WS/build/$p" "$WS/install/$p"; done
+  fi
   docker exec "$LOC" mkdir -p "$WS/src/$repo"
   docker cp "$here/src/$repo/." "$LOC:$WS/src/$repo/"
   docker exec "$LOC" chown -R root:root "$WS/src/$repo"
-  packages+=("${PACKAGES[$repo]}")
+  packages+=(${PACKAGES[$repo]})
 done
 [ ${#packages[@]} -gt 0 ] || exit 0
 

@@ -4,6 +4,7 @@ repos:
   - {path: docker,                   url: git@github.com:MaeharaTakumi/localizer_docker.git,      branch: main}
   - {path: src/ekf_localizer,        url: git@github.com:MaeharaTakumi/ekf_localizer.git,         branch: humble}
   - {path: src/lidar_localization,   url: git@github.com:MaeharaTakumi/lidar_localization.git,    branch: humble}
+  - {path: src/lidarslam_ros2,       url: git@github.com:MaeharaTakumi/lidarslam_ros2.git,        branch: humble}
   - {path: src/localization_bringup, url: https://github.com/MaeharaTakumi/localization_bringup.git, branch: humble}
   - {path: src/localization_tools,   url: git@github.com:MaeharaTakumi/localization_tools.git,    branch: main}
   - {path: src/whill_odometry,       url: git@github.com:MaeharaTakumi/whill_odometry.git,        branch: humble}

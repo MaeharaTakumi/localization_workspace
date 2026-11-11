@@ -2062,3 +2062,57 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - イメージを再ビルドして `test` を作り直した。
 
 ![Gazebo の再生：パラメータを bringup にまとめる前（83）と後、同じ設定で 4 回ずつ](dev_log_images/structure_check_runs.png)
+
+## 2026-11-12
+
+### 85. SLAM（lidarslam）を自己位置推定に組み込む
+
+- 目的（ユーザー指示）：NDT の代わりに SLAM（lidarslam_ros2）で EKF と動かせるようにする。コマンド `lidarslam` で起動し、パラメータは NDT のときと
+  同じ環境のフォルダ（`param/<env>/`）に `lidarslam.yaml` を足す。SLAM の各周期の初期値は NDT と同じく TF（EKF の予測値）から取り、SLAM は TF を出さない。
+  SLAM のプログラムの変更は最小限にし、savemap など今の機能は残す。出力の型は NDT と同じにする。EKF を起動しないときは、launch 側の単純なノードが
+  NDT・SLAM の解から取付で TF map → base を出す。
+- やったこと：
+  - **lidarslam_ros2** を `src/` に置いた（`repos.yaml`、`clone_repos.sh` は `--recursive`。`deploy.sh` は 1 つのリポジトリの複数のパッケージに対応）。
+    **scan_matcher** に足したのは 2 つだけ（36 行）。
+    - `use_tf_init_guess`・`tf_init_guess_timeout`（NDT と同じ名前・既定値 false・0.05 s）：点群の stamp の `global_frame_id` → `robot_frame_id` を TF から引いて
+      初期値にする。引けなければ前回の解。
+    - `/slam_pose`：NDT の `/ndt_pose` と同じ型・QoS（PoseWithCovarianceStamped、reliable、深さ 10、共分散 0、stamp は点群の時刻）。
+      もとの `/current_pose`（PoseStamped。研究室の MATLAB CR の sensor 4 の型）はそのまま。
+    - 既定値は今までと同じ動きなので、パッケージ単体の launch（`ros2 launch lidarslam lidarslam.launch.py`、パッケージの `lidarslam.yaml`）はそのまま使える。
+    - graph_based_slam は変えていない。
+  - **localization_bringup**：
+    - `localization.launch.py` に `matcher`（`ndt`・`lidarslam`）を足した。lidarslam のときは pcl_localization の代わりに scan_matcher（`input_cloud` → `/velodyne_points`）と
+      graph_based_slam を起動し、EKF の `ndt_pose` を `/slam_pose` に付け替える。RViz は lidarslam の `mapping.rviz`。
+    - `lidarslam.launch.py`：`matcher:=lidarslam` で `localization.launch.py` を読むだけ（引数は `env`・`use_ekf`・`rviz`）。
+    - `param/<env>/lidarslam.yaml`（4 つ）：scan_matcher と graph_based_slam の全項目。位置合わせ・地図・ループの値はパッケージの `lidarslam.yaml` と同じ。
+      `robot_frame_id: velodyne`（解が NDT と同じ LiDAR の姿勢になり、点群を変換しない）。初期姿勢は `pcl_localization.yaml` と同じ値。
+    - TF：NDT・scan_matcher には launch がいつも `publish_tf: false`、`use_tf_init_guess` = EKF を起動するか、を入れる。
+      **EKF を起動しないときは `pose_to_tf`**（`scripts/pose_to_tf.py`、約 60 行）が `/ndt_pose` か `/slam_pose` を購読し、取付 base → LiDAR（TF）の逆を掛けて
+      map → base を解の stamp で出す（フレームの名前は `ekf_localizer.yaml` の値）。それまでは NDT が自分で出していた（NDT のコードは変えていない）。
+  - docker：`lidarslam [red|blue|white|gazebo]`（既定 red）で `lidarslam.launch.py` を起動、`slam_params [色]` は `param/<色>/lidarslam.yaml` を開く。`savemap` は同じ。
+  - localization_tools：録るトピックに `/slam_pose` を足し、`tune_run.py` は `matcher:=lidarslam` で SLAM の指標（EKF なしは `/slam_pose`）、
+    `replay_outputs.py` は `LAUNCH_ARGS` で launch の引数を足せるようにした。angle_diff（NDT の `/localization_debug`）が無いときは NaN。
+    図は `plot/plot_slam_compare.py`。
+- 結果：
+  - **NDT のときのパラメータは変わらない**：変更前と後の launch で、gazebo・blue・env なし・blue の EKF なしの全ノードを `ros2 param dump` で比べた。
+    違うのは EKF なしの NDT の `publish_tf`（true → false。TF は pose_to_tf）だけ。Gazebo の NDT＋EKF の再生も 84 の範囲（xy 平均 57 mm）。
+  - **SLAM のつながり**：EKF は `/slam_pose` と `/wheelchair/odom` を購読し、scan_matcher は `/velodyne_points` を購読。`/tf` に流れたのは EKF（か pose_to_tf）の
+    map → base だけ（scan_matcher・graph_based_slam は TF の publisher を作るが出さない）。TF の初期値が引けなかったのは、EKF が初期化する前の始めの 1 回だけ。
+  - **pose_to_tf**：EKF なしの再生（NDT・SLAM）で、`/tf` の map → base_footprint は解·取付⁻¹ と全部（303・309 個）一致（差 0.0001 mm 以下）。
+  - **Gazebo**（`spin360_w1_ekf2`、SLAM＋EKF を 3 回）：3 回ともほぼ同じ値。真値との差は、再生の始め（動く前）から xy 68 mm・yaw −1.9° のずれがあり、
+    動いている間の yaw の変化は小さい（標準偏差 0.34°。NDT＋EKF は 0.96°。NDT＋EKF は回転中に ±1.5° ほど振動している（82 の小さい R_ndt））。
+    xy は直進で 228 mm まで増える。SLAM の地図の座標は初期姿勢で決まり、`initial_pose`（Gazebo の出現位置から計算した値）とこの録画の再生開始時の
+    姿勢がずれているため（yaw 1.9° のずれは原点から 3 m で約 100 mm）。NDT は既存の地図に合わせるのでこのずれは出ない。
+  - **実機 blue**（`blue_spin5` 全体、14.6 m）：`/slam_pose` 1522 個（NDT は 1508 個）。SLAM と NDT の地図の座標は違う（NDT の地図は LiDAR の高さが z = 0）ので、
+    どちらも最初の姿勢からの相対で比べると、SLAM − NDT は最後に xy 5 mm・yaw 0.04°、最大で xy 32.5 mm・yaw 0.69°。
+  - **savemap**：SLAM の再生中に `/map_save` を呼ぶと、launch の作業ディレクトリに `map.pcd`（345 kB）が書かれた。`pose_graph.g2o` は 0 バイトだった
+    （graph_based_slam は変えていない。この短い録画の部分地図が少ないためかは未確認）。
+  - **パッケージ単体**：パッケージの `lidarslam.yaml` で scan_matcher を起動すると、今までどおり `publish_tf: true`・`use_tf_init_guess: false` で `/tf` と `/current_pose` を出した。
+- 未確認・注意：
+  - graph_based_slam で直した姿勢は scan_matcher と EKF には戻らない（直るのは保存する地図だけ）。
+  - EKF の `R_ndt` は NDT と同じ値。SLAM の解の誤差の大きさに合わせた調整はしていない。
+  - SLAM の時刻は点群の stamp だけ（NDT の `stamp_mode` に当たるものは無い）。
+  - `/initialpose`（RViz の 2D Pose Estimate）は scan_matcher に届かない（購読するのは PoseStamped の `/initial_pose`）。
+  - 実機での走行（再生でない）、`lidarslam` コマンドからの RViz の表示は確かめていない。
+
+![Gazebo の再生：NDT＋EKF と SLAM（lidarslam）＋EKF、SLAM 単体の真値との差](dev_log_images/slam_vs_ndt_gazebo.png)
