@@ -1980,3 +1980,43 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
     **Gazebo は blue の R_ndt で明らかに悪くなる**（R_ndt が約 50〜500 分の 1 になる。遅れて届く NDT に飛びついて振動する 15 と同じ傾向と考えられるが、原因は切り分けていない）。red・white の録画の再生と実車では確かめていない。
 
 ![Gazebo の再生：Q・P_init・R_ndt の既定（変更前と blue の値）](dev_log_images/qrp_default_runs.png)
+
+## 2026-11-11
+
+### 83. 構成の見直し（名前の統一・使っていないものの整理・共通部品・反映のスクリプト）
+
+- 目的（ユーザー指示）：扱いやすくする。名前を中身と合わせてそろえ、無駄な処理と重複をなくす。
+- やったこと：
+  - **NDT の `/path` をやめた**（lidar_localization。ソースでコメントアウト）。読み手がいないのに、点群ごとに姿勢を 1 つ足して軌跡全体を
+    配信し、伸び続けていた（20 Hz で 10 分走ると 12000 点）。環境ファイルの `path` の行もコメントにした。
+  - **`odom_covariance` → `odom_relay`**（ノード名・`scripts/odom_relay.py`・クラス `OdomRelay`・環境ファイルの `nodes.odom_relay`・`parameters.odom_relay`）。
+    80 で R を ekf_localizer に移してから、倍率と時刻しか扱っていなかった。トピック名（`/wheelchair/odom`・`/localization/odom`）と `odom_scale` は変えていない。
+  - **時刻の決め方の名前を `stamp_mode`（`stamp`・`receipt`・`auto`）と `stamp_auto_threshold` にそろえた**。それまでは環境ファイル `stamp_mode`・
+    `clock_offset_threshold`、NDT `scan_time_source`（`stamp` は `message`）・`scan_time_auto_threshold`、`odom_covariance` `stamp_mode`・`auto_threshold` の 4 通り。
+    launch は NDT と `odom_relay` に同じ名前・同じ値で渡す。古い名前（`odom_covariance`・`clock_offset_threshold`）が環境ファイルに残っていると launch がエラーで止まる。
+  - 中身と合わない名前：ekf_localizer の `velocity()`・`angularVelocity()` → `vXy()`・`omegaYaw()`、whill_odometry の `w_l`・`w_r`（並進速度 [m/s]）→ `v_left`・`v_right`。
+  - 使っていない関数：ekf_localizer の `EkfCore::lastDt()`・`lastDtClamped()`（とメンバ `last_dt_`・`last_dt_clamped_`）、`LaggedEkf::historyLength()`。
+  - 古い記述：環境ファイル 4 つ（R を付けるという説明、blue は「red と車椅子だけが違う」「未校正」、`gazebo.yaml` の R_ndt の値と `noise/ndt_init_noise.py`）、
+    `joint_state_odometry.py`、ekf_localizer の README・`ekf_flow.md`（「`ekf.yaml` の既定は速度 3 つの Q が 0」など）、bringup の README・`node_graph.md`・`package.xml` の依存。
+  - **localization_tools の共通部品を `common/` にまとめた**：`bag_io.py`（`read_bag`・`phases_of` 5 か所・stamp の変換 7 か所・`/tf_static` からの取付 3 か所）、
+    `plot_style.py`（`plot_spin.py` と `calibration/plot_noise.py` にあった色・書式・`box_on`、`setup`・`style` 5〜7 か所）、`pose_math.py`（`eval/` から移し、`wrap` 3 か所）、
+    `gazebo_model.py`（Gazebo の車輪の半径と間隔・倍率・URDF の取付 4〜5 か所）。再生は `tune_run.launch_and_play` の 1 つにし、`replay_outputs.py` が
+    `tune_run` のモジュール変数を書き換えて流用していたのをやめた。`rerender_results.sh` は `OUT`・`T0` で出力先とツールの場所を変えられるようにした。
+  - **反映のスクリプト `deploy.sh`**（作業場所）：`docker cp`・chown・`colcon build` と `sync.sh push` を 1 コマンドに（`--test`・`--mirror`）。
+  - CLAUDE.md を今の仕様と規則だけにした（72 kB → 33 kB。経緯はこの開発ログの番号で参照）。
+- 結果：
+  - 4 パッケージのビルドと ekf_localizer のテスト 43 個は通った。
+  - **ツールの出力は変わらない**：`plot/rerender_results.sh` を変更前・変更後のツールで別の場所に流し、図など 92 ファイルがバイト単位で一致。
+    描き直しに入っていない 17 のスクリプト（`plot_axes.py`・`plot_matlab_outputs.py`・`evaluate_bag.py`・`compare_run.py eval`・`make_window_bag.py` など）も、
+    ログの時刻を除いて出力が同じ（`plot_odom_sources.py`・`plot_velocity.py`・`compare_odom_timing.py` は変更前から、録画が無いかトピックが無くて止まる）。
+  - 起動ログで、NDT と `odom_relay` に `stamp_mode`・`stamp_auto_threshold` が同じ値で入ることを確かめた（`stamp`、`auto` 0.05 s とも）。
+  - 再生（今の構成）：
+    - 実機 blue の `blue_spin5` 全体：NDT が解いた回数 1512（76 の同じ設定 1516）、点群の時刻の予測値 − NDT の解の xy 3.76 mm（同 3.80 mm）。
+    - Gazebo の `gazebo_spin5` 全体：予測値 − NDT の解の xy 10.9・8.5 mm（76 の記録 3.0〜3.6 mm）。**82 より前の R_ndt・P_init に戻すと 3.2 mm で、
+      差は 82 の既定の変更によるもの**（今回の変更ではない）。
+    - Gazebo の `spin360_w1_ekf2` を同じ設定（今の既定）で 4 回再生し、82 の 4 回（`qrpdef_blue_*`）と比べた（`eval/batches/batch_rename_check.json`、
+      `eval/results/results_rename_check.jsonl`。82 の 4 行も同じファイルに写した）。平均（82 → 今回）：定常の回転中の yaw 誤差 0.90 → 0.82°、
+      angle_diff 1.33 → 1.23°、xy 誤差 0.058 → 0.056 m、回転開始の跳ね 2.05 → 1.77°、回転 → 前進 2.96 → 3.12°。1 回ごとの値の範囲はどの指標も重なり、
+      **再生ごとのばらつきの中で同じ**（スコア 0.95、1 回ごとに 0.72〜1.09）。
+
+![Gazebo の再生：構成の見直しの前（82）と後、同じ設定で 4 回ずつ](dev_log_images/rename_check_runs.png)
