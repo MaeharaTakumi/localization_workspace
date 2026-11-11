@@ -6,8 +6,8 @@
 #   ./deploy.sh ekf_localizer            指定したリポジトリだけ（src/ の下の名前。複数書ける）
 #   ./deploy.sh --test ekf_localizer     ビルドのあと colcon test も行う
 #   ./deploy.sh --mirror localization_bringup
-#       コンテナ側のリポジトリを消してから写す（ホストで消した・名前を変えたファイルをコンテナにも残さない）。
-#       コンテナの中だけで変えたものは消えるので、付けたときだけ行う
+#       コンテナ側のリポジトリと、そのパッケージの build・install を消してから写してビルドする（ホストで消した・名前を変えた
+#       ファイルを、コンテナの src にも install にも残さない）。コンテナの中だけで変えたものは消えるので、付けたときだけ行う
 #
 # ROS のパッケージ：docker cp で /root/ros2_ws/src/<リポジトリ> に写し、所有者を root にして
 #   （docker cp はホストの UID のまま置くので、直さないとコンテナ内の git が dubious ownership で止まる）、
@@ -49,7 +49,7 @@ for repo in "${repos[@]}"; do
   fi
   [ -n "${PACKAGES[$repo]:-}" ] || { echo "unknown repository: $repo (available: ${!PACKAGES[*]} $TOOLS)"; exit 1; }
   echo "== copy src/$repo -> $LOC:$WS/src/$repo"
-  [ $mirror = 0 ] || docker exec "$LOC" rm -rf "$WS/src/$repo"
+  [ $mirror = 0 ] || docker exec "$LOC" rm -rf "$WS/src/$repo" "$WS/build/${PACKAGES[$repo]}" "$WS/install/${PACKAGES[$repo]}"
   docker exec "$LOC" mkdir -p "$WS/src/$repo"
   docker cp "$here/src/$repo/." "$LOC:$WS/src/$repo/"
   docker exec "$LOC" chown -R root:root "$WS/src/$repo"

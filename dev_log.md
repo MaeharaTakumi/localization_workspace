@@ -2020,3 +2020,45 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
       **再生ごとのばらつきの中で同じ**（スコア 0.95、1 回ごとに 0.72〜1.09）。
 
 ![Gazebo の再生：構成の見直しの前（82）と後、同じ設定で 4 回ずつ](dev_log_images/rename_check_runs.png)
+
+### 84. パラメータを localization_bringup の環境ごとのフォルダにまとめ、odom_relay を ekf_localizer に移す
+
+- 目的（ユーザー指示）：設定の置き場所を 1 つにし、コードを単純にする。bringup から `env:=<色>` で起動したら `param/<色>/` の yaml を読み、
+  env を付けない起動・yaml の無いノード・書いていない項目は、各ノードのコードの既定値にする。
+- やったこと：
+  - **localization_bringup**：環境を `param/<env>/` のフォルダにした（`env.yaml`：`use_sim_time`・起動するノード `nodes`（true / false）・`static_tfs`、
+    `<ノード名>.yaml`：`ekf_localizer`・`pcl_localization`・`whill_odometry` の普通の ROS のパラメータファイル）。各 yaml には全項目を書いた
+    （値は変更前に `ros2 param dump` で書き出した各環境の実際の値）。launch が入れるのは `use_sim_time`、NDT の `publish_tf`・`use_tf_init_guess`、
+    `map_path`（引数を付けたとき）だけ。env を付けないと NDT と EKF だけをコードの既定値で起動する（それまでは red）。
+    env の `topics`（全ノードのトピックの付け替え）をやめ、トピックは各ノードの名前のままでつなぐ。付け替えるのは ekf_localizer の `odom` → `/wheelchair/odom` と、
+    NDT の `pcl_pose` → `/current_pose`（RViz と、研究室の MATLAB（whill_common_matlab の CR）の実機モードが購読する名前なので残した）だけ。
+    `odom_relay`（倍率と時刻だけ）と `joint_state_odometry`（Gazebo の移動平均の代わりに試したノード。使っていなかった）を消した。
+  - **ekf_localizer**：オドメトリの倍率 `odom_scale` と時刻の決め方 `odom_stamp_mode`（`stamp`・`receipt`・`auto`。receipt は EKF が受け取った時刻、
+    auto は |受け取った時刻 − stamp| が `odom_stamp_auto_threshold` 以上なら受け取った時刻）を足した。NDT の観測は `/ndt_pose` の stamp のまま
+    （`/ndt_pose` の受信時刻は NDT の計算の遅れを含み、20 で大きく悪化したので、点群の受信時刻は NDT 側の `stamp_mode` で入れる。ユーザー指示）。
+    トピックのパラメータ `ndt_pose_topic`・`odom_topic`・`initialpose_topic` をやめた（remap と同じことをしていた）。`param/ekf.yaml` を消し、
+    コードの既定値を消した yaml の値に合わせた（`use_odom` false → true、`gate_ndt` 16.81 → 1e5、`gate_odom` 9.21 → 1e5。観測モデルの構造体の
+    既定（χ² の値）はテストで使うので残した）。
+  - **lidar_localization**：`param/localization.yaml` を消し、コードの既定値を合わせた（`registration_method` NDT → NDT_OMP、`score_threshold` 2.0 → 0.2、
+    `voxel_leaf_size`・`map_viz_leaf_size` 0.2 → 0.1、`scan_min_range` 1.0 → 0.1、`scan_period` 0.1 → 0.05、`use_pcd_map`・`set_initial_pose`・`enable_debug_topic` → true、
+    `map_path` → 空、`stamp_mode` receipt → stamp、`pose_output_frame` base_link → lidar。初期姿勢は原点・回転なしのまま。消した yaml の `initial_pose_qz: 3.14`・`qw: 1.0`
+    は正規化されていなかった）。単体の launch も yaml を読まない。
+  - **whill_odometry**：`param/odometry.yaml` を消し、`use_stamped_input` の既定を true に。単体の launch は `input_topic_name` を引数で渡す。
+  - localization_tools：環境を読む・写して書き換える `common/env_files.py` を作り、`tune_run.py`・`replay_outputs.py`・`calibrate.py`・`calibrate_ndt_noise.py` を付け替えた。
+    候補の JSON に `odom_relay` など無いノードがあるとエラーにする（黙って効かないのを防ぐ）。録画するトピックから `/localization/odom` を外した。
+  - docker：`ekf_params`・`lclz_params`・`odom_params [色]` は `param/<色>/` の yaml を開く。`deploy.sh --mirror` はそのパッケージの build・install も消す。
+- 結果：
+  - **パラメータは変わらない**：変更前後に、4 つの環境で全ノードのパラメータを `ros2 param dump` で書き出して比べた。違うのは、消したトピックのパラメータ、
+    ekf_localizer に移った `odom_scale`・`odom_stamp_mode`・`odom_stamp_auto_threshold`（odom_relay の値と同じ）、whill_odometry の `input_topic_name`
+    （remap していた中の名前 → 実際の名前）だけ。env なしは red の値からコードの既定値に変わった（意図どおり）。
+  - トピックのつながりを `ros2 node info` で確かめた（blue・gazebo・env なし）。ekf_localizer は `/wheelchair/odom` を購読し、`/localization/odom` は無くなった。
+  - ekf_localizer のテスト 43 個は通った。
+  - Gazebo の `spin360_w1_ekf2` を 4 回再生し、83 の 4 回と比べた（`eval/batches/batch_structure_check.json`、`eval/results/results_structure_check.jsonl`）。
+    1 回ごとの値の範囲はどの指標も重なり、ばらつきの中で同じ（スコア 0.87、1 回ごとに 0.73〜0.96。83 は 0.76〜1.15）。
+  - 実機 blue の `blue_spin5` 全体の再生：NDT が解いた回数 1511（83 は 1512）、予測値 − NDT の解の xy 3.65 mm（83 は 3.76 mm）。
+  - `odom_stamp_mode: auto`（閾値 0.05 s）と NDT の `stamp_mode: auto`：再生の最初の 2 個だけ受け取った時刻を使い（ずれ 80〜83 ms）、あとは stamp。
+  - 推定（`calibrate.py`）は Gazebo の `gazebo_calibration` で R・倍率・取付が 10-16 の結果と一致。実機 blue でも倍率 [1.014, 1.0141]・車輪の間隔 0.495 m を
+    新しいフォルダから読んだ。NDT の R（`calibrate_ndt_noise.py`）は NDT を動かし直すので末尾の桁だけ違う（x 0.000735 → 0.000733 など）。
+  - イメージを再ビルドして `test` を作り直した。
+
+![Gazebo の再生：パラメータを bringup にまとめる前（83）と後、同じ設定で 4 回ずつ](dev_log_images/structure_check_runs.png)
