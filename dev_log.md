@@ -2160,3 +2160,17 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - 推定の後、test の推定器は止まっていた。Gazebo は起動したまま。
 
 ![calibration（Gazebo）：取付とオドメトリの倍率](dev_log_images/calibration_gazebo_20261112_mount_scale.png)
+
+## 2026-11-13
+
+### 88. 走行のスクリプトがツールを自分で写すのをやめる
+
+- 目的（ユーザー指示）：localization_tools のプログラムを実行するときに、ホストのツールをコンテナへ自動で写すのをやめる。
+  写していたのは `drive/run_test.sh`・`calibration/run_calibration.sh`（ホストから実行したとき。`run_calibration.sh` は自分と `run_test.sh` で 2 回）だけで、
+  ほかのプログラム（`eval/`・`plot/`・`calibrate.py`・`matlab/replay_matlab.sh`）や ROS のパッケージは `deploy.sh` で写してから実行する前提だった。
+- やったこと：2 つのスクリプトから `sync.sh push` を消した。ホストから実行しても動くのはコンテナの `/root/ros2_ws/localization_tools` で、
+  ホストで直したら先に `deploy.sh`（か `sync.sh push`）で写す（ツールの README・CLAUDE.md にも書いた）。
+- 結果：ホストから Gazebo で `run_test.sh gazebo spin check/no_autosync`、`run_calibration.sh gazebo check/no_autosync_calibration` を流し、
+  どちらも写さずに最後まで動いた（calibration の推定は 87 とほぼ同じ：omega の倍率 0.9231、取付 x −0.1712・y −0.0015 m）。
+- 関連（87 の後の質問への答え）：Enter の指示までの約 15 s は、`ros2` の確認 3 つ（`/ekf_pose`・`cmd_vel` の購読・録画するトピック。各 約 3.5 s）と
+  録画の開始後の 3 s。Enter の後は 1 周ごとにしか表示しないので、車椅子が動かないと 60 s まで何も出ない。実機 white で動かなかった原因は未調査（その PC のログ待ち）。

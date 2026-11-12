@@ -140,7 +140,8 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 
 - `drive/run_test.sh <gazebo|red|blue|white> <動き> [<bag 名> [launch の追加引数]]`（コマンド `drive`）。bag 名を省くと `<target>_<動き>_<日時>`、
   `check/<名前>` にすると `bags/<source>/check/`（ツールの動作確認。比較・調整には使わない）。ホストからでもコンテナの中からでも実行できる
-  （docker が無ければコンテナの中とみなす。実機の PC ではコンテナの中から）。Gazebo はホストからなら起動し直して推定器も起動、
+  （docker が無ければコンテナの中とみなす。実機の PC ではコンテナの中から。ホストからでも動くのはコンテナのツールで、
+  ツールを写すのは `deploy.sh`・`sync.sh push` だけ。実行するスクリプトは写さない）。Gazebo はホストからなら起動し直して推定器も起動、
   コンテナの中からは起動し直さない。実機は推定・whill_driver・LiDAR が動いていることを確かめるだけ（選んだ色の `cmd_vel` を受けるノードが無ければ止める）。
 - 動きは `drive/profiles.yaml`（spin・spin5・stops・accel・curve・slalom・reverse。速さは上限に対する割合）、設定は `drive/config/<target>.yaml`
   （上限：Gazebo v 1.5・後退 0.8 m/s・ω 1.0 rad/s、実機 0.5・0.3・0.5）。`CONFIG=real_in_gazebo` で実機の設定を Gazebo で試す。
