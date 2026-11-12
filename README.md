@@ -24,7 +24,7 @@ cd localization && ./clone_repos.sh      # docker/（localizer_docker）と src/
 `src/` のリポジトリを変えたら、コンテナで何かを実行する前に `deploy.sh` で反映する（ホストで実行）。
 
 ```bash
-./deploy.sh                           # 全部（ROS のパッケージ 4 つをビルド、localization_tools は写すだけ）
+./deploy.sh                           # 全部（ROS のリポジトリ 5 つを写してビルド、localization_tools は写すだけ）
 ./deploy.sh ekf_localizer             # 指定したリポジトリだけ（複数書ける）
 ./deploy.sh --test ekf_localizer      # ビルドのあと colcon test も
 ./deploy.sh --mirror localization_bringup   # コンテナ側を消してから写す（ホストで消した・名前を変えたファイルを残さない）

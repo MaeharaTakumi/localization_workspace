@@ -18,7 +18,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **パラメータの置き場所**（2026-11-11、ユーザー指示）：各パッケージ（ekf_localizer・lidar_localization・whill_odometry）はパラメータファイルを
   持たない。環境ごとの値は localization_bringup の `param/<env>/<ノード名>.yaml`（SLAM は `lidarslam.yaml`）に**全項目を書く**
   （lidarslam_ros2 のパッケージ側の `lidarslam/param/lidarslam.yaml` はパッケージ単体の launch 用に残す。2026-11-12、ユーザー指示）。yaml の無いノード・書いていない項目、
-  env を指定しない起動は、各ノードのコードの既定値で動く（コードの既定は今の値に合わせてある）。
+  env を指定しない起動は、各ノードのコードの既定値で動く（コードの既定は今の値に合わせてある。ただし環境で決まる値（取付・地図・初期姿勢・
+  オドメトリの倍率・Gazebo の基準フレーム）と、ekf_localizer の `tf_future_steps`・`tf_past_steps`（コード 0・0、環境は 4 つとも 2・1）は yaml にだけある）。
 - **変更したら、実行する前に毎回反映する**：`src/` のリポジトリを変えたら、`test` で何かを実行する前に `./deploy.sh <リポジトリ>`
   （写す・chown・`colcon build`。localization_tools は `sync.sh push`）。ファイルを消した・名前を変えたときは `--mirror`。
   `docker/`（localizer_docker）を変えたら、**確認を取らずに**イメージを再ビルドして `test` を作り直す（下の「コンテナを作り直す」）。
@@ -92,7 +93,7 @@ build-arg `BRINGUP_BRANCH` で bringup だけ別のブランチにできる）�
 コマンド（`.bash_aliases`）：`localization [red|blue|white|gazebo] [地図]`（既定 red。地図は名前でもパスでもよく、省くと選ぶ画面）、
 `lidarslam [red|blue|white|gazebo]`（SLAM。既定 red）・`savemap`（`lidarslam` と同じディレクトリで実行）、
 `ekf_params`・`lclz_params`・`odom_params`・`slam_params [色]`（`param/<色>/` のノードの yaml を開く）、
-`scanmatch_cli <地図> [env]`、`drive`・`drive_list`・`bags_list`、`calibration`・`calibrate`・`calibration_plan`・`calibration_params`、`savemap`。
+`scanmatch_cli <地図> [env]`、`drive`・`drive_list`・`bags_list`、`calibration`・`calibrate`・`calibration_plan`・`calibration_params`。
 
 ## よく使うコマンド
 
@@ -153,7 +154,7 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 
 - `calibration/run_calibration.sh <target> [<bag 名>]`（コマンド `calibration`）：推定用の動き（`param/motion.yaml` の 5 つ：その場で左に 4 周 → 止まる 5 s →
   片道の直進 → 止まる。Gazebo・実機共通。drive の動きとは別。`calibration/motion.py` が作り `PROFILES` で `run_test.sh` に渡す）で走って録画し、
-  `calibration/calibrate.py <target> <bag>`（コマンド `calibrate`）で R・倍率・取付（Gazebo は NDT の R も）を推定する。設定は `param/calibrate.yaml`
+  `calibration/calibrate.py <target> <bag>`（コマンド `calibrate`）で R（R_odom・R_ndt）・倍率・取付を推定する（Gazebo は真値との比較 `--truth` も）。設定は `param/calibrate.yaml`
   （各プログラムのオプションの既定値。`params.py` が読む）。結果は `/root/ros2_ws/fig/calibration/<bag 名>/summary.yaml`（env には書き込まない）。
 - `calibrate_noise.py`：**観測ノイズ R を真値なしで求める**（指令が一定の区間の局所 1 次式の残差の分散 × 積分相関時間）。R_v は定速の直進の v の残差、
   **R_omega = 4 R_v (s_omega/s_v)² / b²**（左右の車輪のノイズが独立と仮定。b は Gazebo 0.492（`noise.gazebo_tread`）、実機は whill_odometry の `tread_width`）。
@@ -255,9 +256,10 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
     `odom_noise_alpha`・`accel_noise_tau`）。v・omega には先に `odom_scale` を掛ける。メッセージの共分散は使わない。遅れの補正は `odom_delay`・`ndt_delay`（stamp から引く）。
   - NDT の観測の時刻はメッセージの stamp、オドメトリは `odom_stamp_mode`。遅れて届く NDT は `LaggedEkf` が巻き戻して入れ直す（`history_length` 1 s）。
   - トピックは `ndt_pose`・`odom`・`initialpose`（変えるときは remap。`*_topic` パラメータは 2026-11-11 にやめた）。
-  - **既定値（コード。`param/<env>/ekf_localizer.yaml` にも全項目）は実機 blue の値**：Q `[0.05, 0.05, 0.005, 0.05, 0.05, 0.05, 0.05, 0, 0.1, 0.1, 10]`、P_init `[0.2, 0.2, 0.2, 0.01, 0.01, 0.01, 0.01, 0, 0.01, 0.01, 0.01]`、
+  - **ノイズの既定値（コード。`param/<env>/ekf_localizer.yaml` にも全項目）は実機 blue の値**：Q `[0.05, 0.05, 0.005, 0.05, 0.05, 0.05, 0.05, 0, 0.1, 0.1, 10]`、P_init `[0.2, 0.2, 0.2, 0.01, 0.01, 0.01, 0.01, 0, 0.01, 0.01, 0.01]`、
     R_ndt `[2.08e-4, 1.55e-4, 9.61e-5, 5.89e-5, 6.32e-5, 1.23e-5]`、R_odom `[6.08e-3, 9.92e-4]`、alpha・tau 0（`dev_log.md` の 76・80・82）。
-    red・white・blue はこの値、Gazebo は Q の速度 3 つを 0 にしている（P_init・R_ndt は既定のまま。
+    コードの既定と環境で違うのは `tf_future_steps`・`tf_past_steps`（コード 0・0、環境 2・1）、`odom_scale`（コード [1, 1]）、Gazebo の `base_frame_id`。
+    ノイズは red・white・blue がこの値、Gazebo は Q の速度 3 つを 0 にしている（P_init・R_ndt は既定のまま。
     82 の再生で Gazebo は悪くなった）。実機の omega_roll・omega_pitch 0.1 の改善が傾きの動きか NDT の誤差を追っただけかは、真値が無いので分からない。
 - **オドメトリ**：使うのは `twist.linear.x`・`twist.angular.z`。Gazebo は diff_drive_controller の odom を `gazebo_bridge` が中継する `/wheelchair/odom`
   （50 Hz、best effort、共分散 0、移動平均 1）、実機は `whill_odometry`（共分散 0）。ekf_localizer が `/wheelchair/odom` を直接購読し、倍率 `odom_scale`

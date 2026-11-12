@@ -2116,3 +2116,24 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - 実機での走行（再生でない）、`lidarslam` コマンドからの RViz の表示は確かめていない。
 
 ![Gazebo の再生：NDT＋EKF と SLAM（lidarslam）＋EKF、SLAM 単体の真値との差](dev_log_images/slam_vs_ndt_gazebo.png)
+
+### 86. md とプログラムの食い違いを直す
+
+- 目的（ユーザー指示）：各リポジトリの md（README・docs・CLAUDE.md）をプログラムと突き合わせ、違う所をすべて直す。プログラムは変えない。
+- やったこと（md だけ）：
+  - ekf_localizer：README の「トピック名はパラメータで変えられる」（2026-11-11 にやめた）を remap だけに、`tf_future_steps` の行に環境の値（2・1）を足した。
+    `docs/ekf_flow.md`：`gate_ndt` の既定（ノードは 1.0e5。16.81 は観測モデルの構造体の既定）、実機の時刻の表（今は点群・オドメトリとも stamp）、
+    反転の遅れ（約 0.1 s は移動平均 0.2 s だった 2026-10-12 までの値）、クラス図（`observationJacobian` → `lidarPoseJacobian`、`at`・`OdomNoise` を足した）。
+  - lidar_localization：README の IO がフォーク元のままだった（`/cloud` → `/velodyne_points`、`/initialpose`・`/pcl_pose` の型、初期値の TF のフレーム、
+    `/localization_debug`）。demo の launch は自分で `localization2.rviz` の RViz と取付の静的 TF を出す。
+  - localization_bringup：`gazebo.yaml`（今は `param/gazebo/`）、launch が入れる値（`publish_tf`・`use_tf_init_guess`）は yaml に書かなくてよいこと。
+  - localization_tools：`calibrate.py` は `calibrate_ndt_noise.py` を呼ばない（README の中で矛盾していた）、`common/env_files.py`・`eval/` の全スクリプト、
+    `LAUNCH_ARGS`（lidarslam の再生）と `plot/plot_slam_compare.py` を足した。
+  - 作業場所の README：`deploy.sh` がビルドするのは 4 つではなく 5 つのリポジトリ。docker の README：コマンド `scanmatch_cli` を足した。
+  - CLAUDE.md：`calibrate.py` は R_ndt をどの target でも出す（Gazebo だけなのは `--truth`）、コードの既定と環境で違う値（`tf_future_steps`・`tf_past_steps`・
+    `odom_scale` など）、`savemap` の重複。
+- 結果：md だけの変更なので、推定の動作・数値は変わらない。docker の README を変えたので、イメージを再ビルドして `test` を作り直した。
+- 気づいたこと（直していない。プログラムの値）：
+  - `drive/config/blue.yaml` の `feedback.mount`（走行中の監視で `/ekf_pose` を車体に直す取付）が red と同じ値（x −0.17、yaw 0.017）で、
+    blue の `env.yaml` の取付（x −0.195、rpy −0.0138・0.0167・0.0191）と違う。
+  - lidar_localization の単体の launch の取付の yaw は −0.017 rad で、red・white の `env.yaml` は +0.017 rad。
