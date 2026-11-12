@@ -142,7 +142,8 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   `check/<名前>` にすると `bags/<source>/check/`（ツールの動作確認。比較・調整には使わない）。ホストからでもコンテナの中からでも実行できる
   （docker が無ければコンテナの中とみなす。実機の PC ではコンテナの中から。ホストからでも動くのはコンテナのツールで、
   ツールを写すのは `deploy.sh`・`sync.sh push` だけ。実行するスクリプトは写さない）。Gazebo はホストからなら起動し直して推定器も起動、
-  コンテナの中からは起動し直さない。実機は推定・whill_driver・LiDAR が動いていることを確かめるだけ（選んだ色の `cmd_vel` を受けるノードが無ければ止める）。
+  コンテナの中からは起動し直さない。実機は推定・whill_driver・LiDAR を起動しない。走る前の確認（姿勢が届く・指令を受けるノード（録画は数えない）がある・録画する
+  トピックがあるか）は、録画を始めた後に `drive_test.py` が 1 つのノードで行う（欠けたら走らずに止める。`ros2` の CLI は使わない。`dev_log.md` の 89）。
 - 動きは `drive/profiles.yaml`（spin・spin5・stops・accel・curve・slalom・reverse。速さは上限に対する割合）、設定は `drive/config/<target>.yaml`
   （上限：Gazebo v 1.5・後退 0.8 m/s・ω 1.0 rad/s、実機 0.5・0.3・0.5）。`CONFIG=real_in_gazebo` で実機の設定を Gazebo で試す。
   `CONFIG=gazebo_ground`（動きは `PROFILES=.../drive/profiles_velocity.yaml`）は車椅子を世界の原点の地面に置き、推定を起動しない（`dev_log.md` の 57）。
