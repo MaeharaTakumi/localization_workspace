@@ -2137,3 +2137,26 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - `drive/config/blue.yaml` の `feedback.mount`（走行中の監視で `/ekf_pose` を車体に直す取付）が red と同じ値（x −0.17、yaw 0.017）で、
     blue の `env.yaml` の取付（x −0.195、rpy −0.0138・0.0167・0.0191）と違う。
   - lidar_localization の単体の launch の取付の yaw は −0.017 rad で、red・white の `env.yaml` は +0.017 rad。
+  - 2 つともユーザーの判断でそのままにする。
+
+### 87. calibration が Gazebo で動くか確かめる
+
+- 目的（ユーザー指示）：パラメータ推定（`calibration/run_calibration.sh`）が今の構成（`param/<env>/`、86 までの変更）で最後まで動くか、Gazebo で試す。
+- やったこと：止まっていた Gazebo のコンテナ `20261002` を `docker start` し、ホストから `calibration/run_calibration.sh gazebo` を実行した
+  （Gazebo の起動し直し → 推定器の起動・録画 → 推定用の動き → `calibrate.py`）。録画は `gazebo_calibration_20261112_181428`。
+- 結果：エラーなく最後まで動いた。走行は計画どおり（左 4 周：各 17.4〜17.5 s・360.1〜360.2°・ずれ 0.03 m、直進 7.97 m）。推定は真値・URDF とよく合った。
+
+  | 項目 | 推定 | 今の設定 | 真値・URDF |
+  |---|---|---|---|
+  | omega の倍率 | 0.9240 | 0.922 | 0.9240 |
+  | v の倍率 | 0.9992 | 1.0 | 0.9999 |
+  | 取付 x / y | −0.1711 / −0.0011 m | −0.17 / 0 m | −0.17 / 0 m |
+  | 取付 roll / pitch / yaw | −0.0023 / 0.0006 / 0.00005 rad | 0 | 0 |
+  | R_odom | [1.19e-8, 1.68e-7] | [6.08e-3, 9.92e-4] | — |
+  | R_ndt | [3.0e-6, 2.3e-6, 4.5e-6, 7.5e-7, 6.5e-7, 4.6e-6] | blue の値 | — |
+
+  - Gazebo のオドメトリはほぼノイズが無いので R_odom はとても小さく出る（直接測った omega の残差の R は 2.4e-4）。R_ndt も blue の値の 1/10〜1/50。
+    小さい R は Gazebo で振動に入りやすい（13〜17・82）ので、env には入れていない。
+  - 推定の後、test の推定器は止まっていた。Gazebo は起動したまま。
+
+![calibration（Gazebo）：取付とオドメトリの倍率](dev_log_images/calibration_gazebo_20261112_mount_scale.png)
