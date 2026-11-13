@@ -2241,3 +2241,31 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - pyflakes で残りのスクリプトに新しい指摘は無い（前からの 2 件：`plot_noise.py` の使っていない import、`calibrate_mount_scale.py` の使っていない変数）。
   - `run_calibration.sh gazebo check/no_truth_calibration`：録画のトピックは 11 個で `/wheelchair/pose` は無い。推定は最後まで動いた
     （倍率 [1.0009, 0.924]、取付 x −0.1711・y −0.0009 m、R_odom [1.22e-8, 1.72e-7]。87・88 とほぼ同じ）。
+
+### 93. 真値と比べる評価ツールを廃止し、推定の姿勢を /tf にする。コマンド calibrate をやめる
+
+- 目的（ユーザー指示）：使わないツールを廃止していく。真値を録画しなくなった（92）ので、真値と比べる評価・図のツールは廃止する。
+  推定の姿勢は `/ekf_pose` ではなく `/tf` の map → base を使い、`/ekf_pose` は録らない。毎回走って推定するので、録画から推定だけをするコマンド `calibrate` はやめる。
+- やったこと（localization_tools。消したものは git の履歴にある）：
+  - 消した評価・調整：`eval/tune_run.py`・`tune_batch.py`・`aggregate.py`・`compare_run.py`・`transition_eval.py`・`outputs_batch.py`、`eval/batches/`（36 個）・`eval/results/`（20 個）。
+    再生の流れ（`launch_and_play`・ノードが落ちた回をエラーにする処理）は `eval/replay_outputs.py` に移した。
+  - 消した図：`plot_spin`・`plot_runs`・`plot_ekf_compare`・`plot_motion_compare`・`plot_slam_compare`・`plot_q_sweep`・`plot_velocity`・`check_omega_slope`・
+    `plot_odom_filter`・`plot_odom_r`・`plot_odom_truth`、`plot/configs/`、地面で真値と比べる走行設定 `gazebo_ground.yaml`・`profiles_velocity.yaml`（`run_test.sh` の
+    `gazebo_launch_args`・`localization: false`、`drive_test.py --get` も）。
+  - 真値の部分を消した：`calibrate_noise.py`・`calibrate_mount_scale.py`・`calibrate.py` の `--truth`、`bag_info.py` の「omega / 真値」、`plot_matlab_outputs.py` の `prior_truth`・`post_truth`。
+  - `/tf` にした：`drive_test.py` の走行中の姿勢（実機・real_in_gazebo）は `/tf` の map → base（`feedback: {type: tf}`。1 つのメッセージの刻みのうち今の時刻以下で
+    最も新しいもの。取付を掛ける処理と `quat_matrix` は要らなくなった）。`plot_drive_paths.py` は録画の `/tf`（stamp ごとに最後の値）。
+    録画（drive の設定）と再生の出力から `/ekf_pose` を外した。
+  - `sync.sh push` はコンテナ側の `.git` 以外を消してから写す（消したファイルが残らない）。`rerender_results.sh` は今のツールで描ける図だけにした。
+  - localizer_docker：コマンド `calibrate` を消し（`8286fd2`）、イメージを作り直して `test` を作り直した。
+- 結果：
+  - `CONFIG=real_in_gazebo run_test.sh gazebo spin check/tf_feedback_realflow`：`/tf` の姿勢で最後まで走った（左 360.5°・右 −360.2°・前進 3.00 s）。
+    前進の区間で EKF の車体の位置が横に ±4.5 cm、約 0.2〜0.4 s ごとに跳んだ（下の図の左。道のりの合計 2.26 m、正味 1.43 m）。`/tf` と `/ekf_pose` は同じ状態から出るので、
+    読み方を変えたためではなく、91 と同じ Gazebo の振動（R_ndt が blue の小さい値）と考えられる。
+  - `run_calibration.sh gazebo check/no_truth_tools_calibration` は最後まで動いた。11-12 の録画で推定し直すと、変更前と同じ値（倍率 [0.9992, 0.924]、取付 x −0.1711 m、
+    R_odom [1.19e-8, 1.68e-7]、R_ndt も 6 つとも同じ）。
+  - `replay_outputs.py`（Gazebo）の出力は `/tf`・`/tf_static`・`/ndt_pose`・`/ekf_odom`・`/localization_debug`・`/clock`、`plot_matlab_outputs.py` も描けた。
+    `rerender_results.sh`（14 本）はエラーなし。pyflakes の指摘なし。
+  - コンテナを作り直した後：ekf_localizer のテスト 43 個が通った。ROS 2 の通信は 127.0.0.1 の UDP だけ（TCP なし、239.255.0.1 に参加しない）。
+
+![実機の設定を Gazebo で走らせた軌跡（/tf の map → base。左が今回、右が 91 の録画）](dev_log_images/drive_tf_feedback_realflow.png)

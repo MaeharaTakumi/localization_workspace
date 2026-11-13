@@ -93,7 +93,7 @@ build-arg `BRINGUP_BRANCH` で bringup だけ別のブランチにできる）�
 コマンド（`.bash_aliases`）：`localization [red|blue|white|gazebo] [地図]`（既定 red。地図は名前でもパスでもよく、省くと選ぶ画面）、
 `lidarslam [red|blue|white|gazebo]`（SLAM。既定 red）・`savemap`（`lidarslam` と同じディレクトリで実行）、
 `ekf_params`・`lclz_params`・`odom_params`・`slam_params [色]`（`param/<色>/` のノードの yaml を開く）、
-`scanmatch_cli <地図> [env]`、`drive`・`drive_list`・`bags_list`、`calibration`・`calibrate`・`calibration_plan`・`calibration_params`。
+`scanmatch_cli <地図> [env]`、`drive`・`drive_list`・`bags_list`、`calibration`・`calibration_plan`・`calibration_params`（録画から推定だけをする `calibrate` は 2026-11-13 にやめた）。
 
 ## よく使うコマンド
 
@@ -122,17 +122,18 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 
 ## localization_tools
 
-**検証・調整・描画・テスト走行・パラメータ推定のプログラム**（ユーザー指示で残す）。編集はホスト、**実行は `test` の `/root/ros2_ws/localization_tools`**
-（`./sync.sh push` で写す。`./sync.sh pull` でコンテナの結果 `eval/results/*.jsonl` と図 `/root/ros2_ws/fig` をホストの `results/` へ）。
-使い方は `localization_tools/README.md`。
+**テスト走行・パラメータ推定・再生・描画のプログラム**。編集はホスト、**実行は `test` の `/root/ros2_ws/localization_tools`**
+（`./sync.sh push` で写す。コンテナ側は `.git` 以外を消してから写すので、消したファイルも残らない。`./sync.sh pull` で図 `/root/ros2_ws/fig` をホストの `results/` へ）。
+使い方は `localization_tools/README.md`。**使わないツールは廃止していく**（ユーザー指示。2026-11-13 に真値と比べる評価・調整・図のツールを廃止した。`dev_log.md` の 90・92・93）。
+**推定の姿勢は `/tf` の map → base を使い、`/ekf_pose` は使わない・録らない**（ユーザー指示。2026-11-13、`dev_log.md` の 93）。
 
 | フォルダ | 中身 |
 |---|---|
-| `common/` | 共通部品：`env_files.py`（localization_bringup の環境のフォルダを読む・写して書き換える）、`bag_io.py`（bag の読み込み・`phases_of`・stamp の変換・`/tf_static` からの取付）、`pose_math.py`、`plot_style.py`（色・書式・`capitalize_labels`・`box_on`）、`gazebo_model.py`（Gazebo の車輪・倍率・URDF の取付）。各スクリプトは `common`・`plot`・`eval`・`calibration` を `sys.path` に入れて import する（`/tmp` には依存しない） |
+| `common/` | 共通部品：`env_files.py`（localization_bringup の環境のフォルダを読む・写して書き換える）、`bag_io.py`（bag の読み込み・`phases_of`・stamp の変換・`/tf_static` からの取付）、`pose_math.py`、`plot_style.py`（色・書式・`capitalize_labels`・`box_on`）、`gazebo_model.py`（Gazebo の車輪・URDF の取付）。各スクリプトは `common` などを `sys.path` に入れて import する（`/tmp` には依存しない） |
 | `drive/` | テスト走行と録画（Gazebo・実機共通） |
 | `calibration/` | パラメータ推定（プログラムと設定 `param/`） |
-| `eval/` | 再生・評価・調整（候補 `batches/`、結果 `results/`） |
-| `plot/` | 図。`rerender_results.sh` で `results/` の図を全部描き直す |
+| `eval/` | 録画の再生（`replay_outputs.py`）、録画の情報（`bag_info.py`）・置き場所（`bag_paths.py`） |
+| `plot/` | 図（走行の軌跡・MATLAB が `/tf` から引く値・RViz の点群に使う姿勢・CR_debug の組）。`rerender_results.sh` で今のツールで描ける `results/` の図を描き直す |
 | `matlab/` | MATLAB の確認（`replay_matlab.sh` はホストで実行） |
 | `record_rviz.sh` | RViz の画面の録画（ホストで実行、ffmpeg の x11grab） |
 
@@ -142,12 +143,12 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   `check/<名前>` にすると `bags/<source>/check/`（ツールの動作確認。比較・調整には使わない）。ホストからでもコンテナの中からでも実行できる
   （docker が無ければコンテナの中とみなす。実機の PC ではコンテナの中から。ホストからでも動くのはコンテナのツールで、
   ツールを写すのは `deploy.sh`・`sync.sh push` だけ。実行するスクリプトは写さない）。Gazebo はホストからなら起動し直して推定器も起動、
-  コンテナの中からは起動し直さない。実機は推定・whill_driver・LiDAR を起動しない。走る前の確認（取付の TF が引ける・姿勢が届く・指令を受けるノード（録画は数えない）がある・録画する
+  コンテナの中からは起動し直さない。実機は推定・whill_driver・LiDAR を起動しない。走る前の確認（姿勢が届く・指令を受けるノード（録画は数えない）がある・録画する
   トピックがあるか）は、録画を始めた後に `drive_test.py` が 1 つのノードで行う（欠けたら走らずに止める。`ros2` の CLI は使わない。`dev_log.md` の 89）。
 - 動きは `drive/profiles.yaml`（spin・spin5・stops・accel・curve・slalom・reverse。速さは上限に対する割合）、設定は `drive/config/<target>.yaml`
-  （上限：Gazebo v 1.5・後退 0.8 m/s・ω 1.0 rad/s、実機 0.5・0.3・0.5）。実機の姿勢 `/ekf_pose`（LiDAR）は、取付を設定に書かず TF から引いて車体に直す
-  （`feedback` の `lidar: true`。フレームは `param/<target>/ekf_localizer.yaml`。`dev_log.md` の 91）。`CONFIG=real_in_gazebo` で実機の設定を Gazebo で試す。
-  `CONFIG=gazebo_ground`（動きは `PROFILES=.../drive/profiles_velocity.yaml`）は車椅子を世界の原点の地面に置き、推定を起動しない（`dev_log.md` の 57）。
+  （上限：Gazebo v 1.5・後退 0.8 m/s・ω 1.0 rad/s、実機 0.5・0.3・0.5）。走行中の姿勢は Gazebo が真値 `/wheelchair/pose`、
+  実機は `/tf` の map → base（`feedback: {type: tf}`。フレームは `param/<target>/ekf_localizer.yaml` の `map_frame_id`・`base_frame_id`。1 つのメッセージの刻みのうち
+  今の時刻以下で最も新しいもの。`dev_log.md` の 93）。`CONFIG=real_in_gazebo` で実機の設定を Gazebo で試す。
 - 走る前に計画（計算した軌跡）を表示する。実機は Enter で走り出す（何か入力して Enter なら取りやめ）。走ってよい範囲の確認はしない（`dev_log.md` の 77）。
   走行中は姿勢が 0.5 s 来ない（壁時計）・ジョイスティック・時計の停止・区間 60 s・Ctrl-C/SIGTERM で 0 を送って止める（rclpy に Ctrl-C を処理させない）。
 - 録画は `/root/ros2_ws/bags/<gazebo|real>/<bag 名>` と `_phases.txt`（動作の開始時刻）・`_drive.log`・`_info.yaml`（`eval/bag_info.py`。途中で止めたら理由も）。
@@ -157,33 +158,28 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 
 - `calibration/run_calibration.sh <target> [<bag 名>]`（コマンド `calibration`）：推定用の動き（`param/motion.yaml` の 5 つ：その場で左に 4 周 → 止まる 5 s →
   片道の直進 → 止まる。Gazebo・実機共通。drive の動きとは別。`calibration/motion.py` が作り `PROFILES` で `run_test.sh` に渡す）で走って録画し、
-  `calibration/calibrate.py <target> <bag>`（コマンド `calibrate`）で R（R_odom・R_ndt）・倍率・取付を推定する（Gazebo は真値との比較 `--truth` も）。設定は `param/calibrate.yaml`
+  続けて `calibration/calibrate.py` で R（R_odom・R_ndt）・倍率・取付を推定する（**毎回走って推定する**。途中で止めたら推定しないので走り直す）。設定は `param/calibrate.yaml`
   （各プログラムのオプションの既定値。`params.py` が読む）。結果は `/root/ros2_ws/fig/calibration/<bag 名>/summary.yaml`（env には書き込まない）。
 - `calibrate_noise.py`：**観測ノイズ R を真値なしで求める**（指令が一定の区間の局所 1 次式の残差の分散 × 積分相関時間）。R_v は定速の直進の v の残差、
   **R_omega = 4 R_v (s_omega/s_v)² / b²**（左右の車輪のノイズが独立と仮定。b は Gazebo 0.492（`noise.gazebo_tread`）、実機は whill_odometry の `tread_width`）。
   R_ndt も走行中の残差から求める。残差のヒストグラム `_hist.png`（縦軸 `Relative frequency`、黒で縁取り、NDT の 6 つは範囲をそろえる、頑健な σ（1.4826 MAD）の
-  正規分布 1 本）。`--truth` は Gazebo だけの検算。
+  正規分布 1 本）。
 - NDT の R を「真値 + ノイズ」の初期値で求める `calibrate_ndt_noise.py`（Gazebo）は 2026-11-13 に消した（git の履歴にある。`dev_log.md` の 15・49・90）。
 - `calibrate_mount_scale.py`：**LiDAR の取付（x, y, yaw。roll・pitch・z は参考）とオドメトリの倍率を真値なしで推定**。取付の yaw は直進の区間で
   LiDAR の yaw − 車体の進む向きを各時刻で求め、RANSAC（0.3° 以内のインライアが最多）で平均する（`dev_log.md` の 49〜52）。
   **取付の roll・pitch・yaw は表示・`summary.yaml`・図とも rad**（`env.yaml` の `static_tfs` と同じ）。
 
-### 再生と評価（`eval/`）
+### 再生（`eval/replay_outputs.py`）
 
-- 再生は `ROS_DOMAIN_ID=99`（動いている推定・Gazebo・MATLAB と混ざらない）。起動・録画・再生・停止の流れは `tune_run.launch_and_play` の 1 つ。
-  出力は入力と同じ側の `bags/<source>/tune/<試行名>`（試行名に `/` は使えない）。ノードが再生の途中で落ちた回はエラーにする。
-- `eval/tune_run.py <bag> <試行名> '<parameters の JSON>' ['use_ekf:=false']`：Gazebo の録画を左回転の 8 秒前から再生し、指標（回転中の yaw 誤差・
-  angle_diff・xy 誤差・4 つの瞬間の跳ね。`transition_eval.py`）を 1 行 JSON で出す。JSON は `{ノード名: {パラメータ: 値}}`（写した `param/gazebo/` の `<ノード名>.yaml` に上書き。`common/env_files.py`）、`"__env__"` は `env.yaml` を上書き。
-  `tune_batch.py`（候補 `batches/`、結果 `results/`）、`aggregate.py`（候補ごとの平均と幅。`SHOW_RUNS=1` で 1 回ごと）。
-- `eval/replay_outputs.py <bag> <試行名> [<env> <地図>]`：録画全体を再生して `/tf` などを録る（実機は env と地図も）。`PARAMS`（JSON）でパラメータを上書き、
-  `RECORD=0` で録らない、`RATE` で速さ。図は `plot/plot_matlab_outputs.py`（`compare` で比べる）、まとめて流すのは `outputs_batch.py`。
-- `eval/compare_run.py`：推定器の比較（6 軸の誤差、実時間の誤差、切り替え時の yaw、推定の古さ。図は `plot/plot_motion_compare.py`）。
-- **同じ設定でもスコアは ±0.05 程度ばらつく。R が小さいと振動に入るかどうかで大きく変わるので、4 回以上流して 1 回ごとの値も見て、
-  良い設定は調整に使っていない録画で確かめる。**
+- `eval/replay_outputs.py <bag> <試行名> [<env> <地図>]`：録画全体を再生して推定器を動かし、`/tf`・`/tf_static`・`/ndt_pose`・`/slam_pose`・`/ekf_odom`・
+  `/localization_debug` を録る（実機は env と地図も）。`ROS_DOMAIN_ID=99`（動いている推定・Gazebo・MATLAB と混ざらない）。起動・録画・再生・停止の流れは
+  `launch_and_play` の 1 つで、ノードが再生の途中で落ちた回はエラーにする。出力は入力と同じ側の `bags/<source>/tune/<試行名>`（試行名に `/` は使えない）。
+  `PARAMS`（JSON。`{ノード名: {パラメータ: 値}}`、`"__env__"` は `env.yaml`。写した環境に上書き。`common/env_files.py`）、`LAUNCH_ARGS`、`RECORD=0` で録らない、`RATE` で速さ。
+  図は `plot/plot_matlab_outputs.py`（`compare` で比べる）。MATLAB と組み合わせるのは `matlab/replay_matlab.sh`。
+- 再生の結果は振動に入るかどうかで大きく変わる（R が小さいとき）。比べるときは 4 回以上流して 1 回ごとの値も見る。
 - 録画の置き場所（`eval/bag_paths.py`）：`/root/ros2_ws/bags/gazebo/<名前>`・`/root/ros2_ws/bags/real/<名前>`、再生の出力は各 `tune/`。
-  Gazebo のオドメトリの移動平均を 1 にした（2026-10-12）**より前の録画は 0.2 s の移動平均で約 0.1 s 遅れている**。移動平均 1 の録画は
-  `spin360_w1_ekf`（調整用）と `spin360_w1_ekf2`（確認用）。実機 blue の `blue_calibration_20261016_133648`・`134316` はラズパイの時計がずれていて
-  時刻を `stamp` にしたままでは再生できない（`141128` 以降は正常。`dev_log.md` の 76）。
+  Gazebo のオドメトリの移動平均を 1 にした（2026-10-12）**より前の録画は 0.2 s の移動平均で約 0.1 s 遅れている**。実機 blue の
+  `blue_calibration_20261016_133648`・`134316` はラズパイの時計がずれていて時刻を `stamp` にしたままでは再生できない（`141128` 以降は正常。`dev_log.md` の 76）。
 
 ## グラフの作り方（ユーザー指示）
 
@@ -289,9 +285,8 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 
 ## Gazebo の性質と評価の注意
 
-- Gazebo の評価は `/ekf_pose`（LiDAR）を主に見る。真値 `/wheelchair/pose` は header が無いので bag の受信時刻を `/clock` で直して使う。
-  **2026-11-13 から Gazebo の録画に真値を入れない**（ユーザー指示。走行中の姿勢には今も使う）。真値を使う評価・図（`tune_run.py`・`compare_run.py`・
-  `--truth` など）に使えるのはそれより前の録画だけ（`dev_log.md` の 92）。
+- **2026-11-13 から Gazebo の録画に真値 `/wheelchair/pose` を入れず、真値と比べる評価・図のツールも廃止した**（ユーザー指示。`dev_log.md` の 92・93）。
+  真値は Gazebo の走行中の姿勢（`drive_test.py`）にだけ使う（header が無いので受け取った時刻を使う）。
 - 地図と Gazebo の座標の間に xy 約 4.5 cm のずれがあり（止まっていても同じ。開始位置 x +41・y −21 mm、直進 16 m 先で x 0 mm と場所で変わる）、
   どの推定器でも出るので、長く走る録画の xy は推定器どうしの差で見る。
 - Gazebo のオドメトリ：回転中の omega は真値の 1.08〜1.09 倍（実効的な車輪間隔 0.532〜0.535 m）、直進の v は一致。地面（ground_plane）では
