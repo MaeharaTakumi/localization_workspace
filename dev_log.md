@@ -2294,3 +2294,18 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
     `/ekf_odom` の LiDAR の位置と同じ時刻の `/ndt_pose` の差は、変更後 xy 平均 24.9 mm・yaw 平均 0.626°、変更前のコードで同じ録画を再生して 22.4 mm・0.627°
     （再生ごとのばらつきの範囲）。
   - 図はない（動作を変えない整理のため）。
+
+### 95. MATLAB（CR_debug）で取付 base → velodyne を rigidtform3d で受け取る
+
+- 目的（ユーザー指示）：MATLAB で base_link → velodyne の TF を引き、estimator で使えるようにする（使い道はまだ決まっていない）。
+- やったこと（whill_common_matlab の `cr_debug`）：
+  - `SensorFetcher` が sensor(5) のとき毎周期 `/tf_static` から base → velodyne を引き、`sensordata.tform_velodyne`（`rigidtform3d`。velodyne の座標の点を
+    base の座標に直す向きで、`pctransform` にそのまま使える）に入れる。引けなければ `[]`。base は Plant と同じで実機 `base_link`、Gazebo `base_footprint`。
+    取付は変わらないが、保存して使い回すより毎周期引く方がコードが単純なのでそうした（ユーザー指示）。
+  - TF を引く `lookup` の親を map に決め打ちせず、`lookup(parent, child, stamp)` にした。estimator は `Estimate2` の `result.RawData` で記録に残る。
+- 結果：
+  - 実機 blue の `blue_spin5_20261016_160557` を `replay_matlab.sh` で再生（1844 周期）：再生の前の 25 周期だけ `[]`、そのあとは毎周期
+    `rigidtform3d` で、`param/blue/env.yaml` の取付（xyz [−0.195, 0, 1.2]、rpy [−0.0138, 0.0167, 0.0191]）との差は最大 1.0e−17。
+  - Gazebo（MATLAB を後から起動）：base_footprint → velodyne は (−0.17, 0, 1.1377)、回転なし（URDF と一致）。transient_local の `/tf_static` を
+    後から参加しても受け取れた（起動後 0.1 s）。引いて `rigidtform3d` にするのは 1 周期あたり 1.16 ms（周期 50 ms の 2.3 %）。
+  - 図はない（値の受け渡しを足しただけのため）。
