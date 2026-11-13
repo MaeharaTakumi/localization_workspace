@@ -2341,3 +2341,13 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 
 ![RViz の TF 表示](dev_log_images/97_rviz_tf.png)
 ![車体まわりの拡大](dev_log_images/97_rviz_tf_zoom.png)
+
+### 98. RViz の矢印を EKF の推定値（/ekf_odom）にする
+
+- 目的（ユーザー指示）：RViz の赤い矢印を、NDT の解（`/current_pose`、LiDAR の姿勢）から EKF の推定値にする。表示するのは base の姿勢の
+  `/ekf_odom`（`/ekf_pose` は使わない）で、NDT の矢印は消す（どちらもユーザーが選んだ）。
+- やったこと（lidar_localization の `rviz/localization2.rviz`）：`PoseWithCovariance`（`/current_pose`）の表示を `Odometry`（`/ekf_odom`、名前
+  `EKF (/ekf_odom)`）に置き換えた。`Keep` 1（最新の 1 つだけ）、`Position Tolerance`・`Angle Tolerance` 0（毎回描き直す。既定の 0.1 だと
+  それだけ動くまで矢印が止まる）、矢印の形・色・共分散の表示は前の NDT の矢印と同じ。
+- 結果（Gazebo、`env:=gazebo`）：RViz（`rviz2`）が `/ekf_odom` を reliable で購読し、ekf_localizer の配信とつながった。中身は map → `base_footprint`
+  （開始位置で x 80.06・y 7.03・z 12.34）と共分散（x の分散 2.7e−3）。画面はロック中で撮れなかったので、画像はない。
