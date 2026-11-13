@@ -2223,3 +2223,21 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
     82 で Gazebo の R_ndt が blue の値（小さい）になった影響と考えられる（13〜17・82 の振動と同じ傾向）。
 
 ![実機の設定を Gazebo で走らせた軌跡（取付は TF から）](dev_log_images/drive_mount_tf_realflow.png)
+
+### 92. localization_tools の不要なものを消し、Gazebo の録画に真値を入れない
+
+- 目的（ユーザー指示）：localization_tools の中で使っていないもの・重なるものを消す。Gazebo の録画に真値 `/wheelchair/pose` を入れない。
+- やったこと：
+  - 消したスクリプト（どこからも呼ばれず、README・`rerender_results.sh` にも無い。git の履歴にある）：
+    - 今は無いトピック `/localization/wheel_odom`（joint_state_odometry。2026-11-11 にやめた）を読む `plot/compare_odom_timing.py`・`plot/plot_odom_sources.py`
+    - `plot/check_wheel_odom.py`、`plot/plot_axes.py`（robot_localization と比べていたころ）、`eval/summarize.py`（`aggregate.py` の古い版）、
+      `eval/make_window_bag.py`（移動平均を 1 に決めた後は使っていない）、`eval/evaluate_bag.py`（`compare_run.py` と重なる）
+  - 消した候補（`eval/batches/`）：今は無いパラメータ（`publish_trigger`・`time_source`）を使う 4 つ、やめた `joint_state_odometry` を env で消す 4 つ、
+    ツールの動作確認だけの `batch_rename_check`・`batch_structure_check` と、その結果 2 つ（`eval/results/`）。
+  - 録画：`drive/config` の gazebo・gazebo_ground・real_in_gazebo の `record_topics` から `/wheelchair/pose` を外した（走行中の姿勢には今も使う）。
+    `calibrate.py` は、録画に真値があるときだけ `--truth` を付ける。
+  - README・CLAUDE.md：Gazebo の録画に真値が無いこと、真値を使う評価・図に使えるのはそれより前の録画だけであること。
+- 結果：
+  - pyflakes で残りのスクリプトに新しい指摘は無い（前からの 2 件：`plot_noise.py` の使っていない import、`calibrate_mount_scale.py` の使っていない変数）。
+  - `run_calibration.sh gazebo check/no_truth_calibration`：録画のトピックは 11 個で `/wheelchair/pose` は無い。推定は最後まで動いた
+    （倍率 [1.0009, 0.924]、取付 x −0.1711・y −0.0009 m、R_odom [1.22e-8, 1.72e-7]。87・88 とほぼ同じ）。

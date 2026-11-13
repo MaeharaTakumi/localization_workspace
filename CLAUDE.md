@@ -290,6 +290,8 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 ## Gazebo の性質と評価の注意
 
 - Gazebo の評価は `/ekf_pose`（LiDAR）を主に見る。真値 `/wheelchair/pose` は header が無いので bag の受信時刻を `/clock` で直して使う。
+  **2026-11-13 から Gazebo の録画に真値を入れない**（ユーザー指示。走行中の姿勢には今も使う）。真値を使う評価・図（`tune_run.py`・`compare_run.py`・
+  `--truth` など）に使えるのはそれより前の録画だけ（`dev_log.md` の 92）。
 - 地図と Gazebo の座標の間に xy 約 4.5 cm のずれがあり（止まっていても同じ。開始位置 x +41・y −21 mm、直進 16 m 先で x 0 mm と場所で変わる）、
   どの推定器でも出るので、長く走る録画の xy は推定器どうしの差で見る。
 - Gazebo のオドメトリ：回転中の omega は真値の 1.08〜1.09 倍（実効的な車輪間隔 0.532〜0.535 m）、直進の v は一致。地面（ground_plane）では
