@@ -236,7 +236,8 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   （map→**LiDAR**、reliable + transient_local、KeepLast(1)）・`/ekf_odom`（v_xy・omega_yaw だけ）を出す。`tf_future_steps`（F）が 1 以上なら `/tf` の stamp を
   周期の刻み k·T（整数 ns）にそろえ、k0 − `tf_past_steps` + 1 〜 k0 + F の刻みを毎周期 1 メッセージで送り直す（tf2・MATLAB の `ros2tf` は同じ stamp を
   後の値で置き換える）。**環境ファイルは 4 つとも F = 2・P = 1**（点群が届いた時点で TF が揃っていない割合が 0 %。P ≥ 2 だと引く値が引く時刻で変わる。`dev_log.md` の 72）。
-- **RViz** は `/tf` をそのまま読む（点群はその stamp の予測値の補間、視点の Target Frame `base_link` は最新の値。既定の視点は `TopDownOrtho`）。
+- **RViz**（NDT のとき `lidar_localization/rviz/localization2.rviz`）：赤い矢印は `/current_pose`（NDT の解。`pose_output_frame: lidar` なので LiDAR の姿勢、共分散 0）、TF の表示（2026-11-13 に足した。`dev_log.md` の 97）、点群・地図。
+  RViz は `/tf` をそのまま読む（点群はその stamp の予測値の補間、視点の Target Frame `base_link` は最新の値。既定の視点は `TopDownOrtho`）。
   RViz2 は設定ファイルの `Hide Left Dock` などを起動時に効かせない（`dev_log.md` の 53〜57・69・70）。
 - **MATLAB**（CR_debug）：sensor(1) で `/velodyne_points` を購読し、`ros2tf`（既定 10 s 溜める）から、sensor(5)（Matching）は今の ROS の時刻の map → base（引けなければ最新）を `Plant` に（使った stamp は `Plant.Stamp`）、
   点群の stamp の map → velodyne（事前推定値。NDT の初期値と同じ値）を `data.LIDAR_pose` に入れる。点群の stamp の TF が引けないか、今の時刻と点群の

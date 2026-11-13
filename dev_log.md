@@ -2327,3 +2327,17 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - `Plant.Stamp − data.Now` は中央値 0 ms、5 % 点 −5.2 ms、最小 −14.9 ms、正（最新の TF に替えた周期）は 0（再生の時刻は `/clock` の刻みなので
     同じ周期の 2 つの時刻はたいてい同じ値）。
   - 図はない（時刻の選び方を変えただけのため）。
+
+### 97. RViz（localization2.rviz）に TF の表示を足す
+
+- 目的（ユーザー指示）：RViz で TF（map・base・velodyne など）を見えるようにする。あわせて、今の赤い矢印が何かを確かめる。
+- やったこと（lidar_localization の `rviz/localization2.rviz`）：TF の表示（`rviz_default_plugins/TF`。名前・座標軸・親子の矢印、全フレーム、
+  `Marker Scale` 1）を足した。Humble の TF 表示にはフレーム名の絞り込みが無いので、Gazebo では車輪などのフレームも出る（`Frames` で個別に消せる）。
+- 赤い矢印：`PoseWithCovariance` の表示で `/current_pose`（NDT の `pcl_pose` を launch が付け替えたもの）。`pose_output_frame: lidar`（4 つの環境とも）
+  なので **NDT の解そのもの = map から見た LiDAR（velodyne）の姿勢**で、base ではない。共分散は 0 なので楕円は出ない。fitness で `/ndt_pose` を
+  出さなかった点群の解と、`/initialpose` で与えた姿勢もここに出る。
+- 結果：Gazebo（`env:=gazebo`）で起動し、RViz の Global Status は Ok、TF の表示に車体まわりのフレームが出た（下。右は車体まわりの拡大）。
+  起動時の視点は TopDownOrtho でなく Orbit になっていた（RViz2 が設定の一部を起動時に効かせない件。53〜57）。
+
+![RViz の TF 表示](dev_log_images/97_rviz_tf.png)
+![車体まわりの拡大](dev_log_images/97_rviz_tf_zoom.png)
