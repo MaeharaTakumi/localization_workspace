@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Gazebo コンテナ `20261002` のファイルは、ユーザーの許可なしに編集しない**（読むのは可）。問題を Gazebo 側の設定変更で解決しない。
   許可を得て変えたものは `gazebo_changes.md` に記録する（**Gazebo を変えたら必ず追記する**）。
 - **既存の自作 EKF（`ekf_localizer`）とその起動方法を壊さない。`ekf_localizer` リポジトリはユーザーが指示したときだけ変更する**
-  （変更の履歴は `dev_log.md`。最近は 74・79・80・82・83）。
+  （変更の履歴は `dev_log.md`。最近は 79・80・82・83・94）。
 - **曖昧な点は自分で判断せず、必ずユーザーに質問する。**
 - **作業がひと区切りついたら（動作を確かめ、開発ログ・README を直したら）、確認を取らずに commit して push する**
   （変更したリポジトリごと。push したら commit を報告する）。
@@ -47,7 +47,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `localization_bringup` | humble | 同じ | launch と環境ごとの設定 `param/<env>/`（各ノードの yaml もここ） |
 | `lidar_localization` | humble | `pcl_localization_ros2` | NDT |
 | `lidarslam_ros2` | humble | `scanmatcher`・`graph_based_slam`・`lidarslam`・`lidarslam_msgs`・`ndt_omp_ros2`（サブモジュール） | SLAM（地図作り）。2026-11-12 から `src/` に置く |
-| `ekf_localizer` | humble | 同じ | 11 状態 EKF（ROS 非依存の本体 + ノード、gtest 3 つ） |
+| `ekf_localizer` | humble | 同じ | 11 状態 EKF（ROS 非依存の本体 + ノード、gtest 5 つ） |
 | `whill_odometry` | humble | 同じ | 実機の車輪オドメトリ |
 | `localization_tools` | main | （ROS のパッケージではない） | 検証・調整・描画・テスト走行・パラメータ推定 |
 | `whill_common_matlab-main _ndtDebug` | `cr_debug` | — | MATLAB（下記） |
@@ -101,7 +101,7 @@ build-arg `BRINGUP_BRANCH` で bringup だけ別のブランチにできる）�
 
 ```bash
 ./deploy.sh                                # src/ の 5 つを写してビルド + localization_tools を sync.sh push（ホストで実行）
-./deploy.sh --test ekf_localizer           # ビルドとテスト（gtest：test_ekf_models・test_lagged_ekf・test_tf_grid）
+./deploy.sh --test ekf_localizer           # ビルドとテスト（gtest：test_ekf_core・test_ndt_model・test_odom_model・test_lagged_ekf・test_tf_grid）
 ./deploy.sh --mirror localization_bringup  # コンテナ側を消してから写す（消した・名前を変えたファイルを残さない）
 
 # Gazebo の起動（20261002 の履歴と同じ。ファイルは編集しない）。止めるときは pkill -INT -f "ros2 launch connection_wheelchair"
@@ -232,7 +232,7 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   TF から引いて初期値にする（`tf_init_guess_timeout` 0.05 s。引けないとき（EKF の初期化前、`/initialpose` から 1 秒間）は前回の解）。
 - **`/ndt_pose`**：map→**LiDAR**、stamp は点群の取得時刻、共分散は未設定（0）。**`/initialpose`** も NDT は LiDAR の姿勢として扱う（RViz の 2D Pose Estimate は z=0）。
   NDT の `/path` は配信しない（ソースでコメントアウト。`dev_log.md` の 83）。
-- **`/tf`・`/ekf_pose` の出し方**：ekf_localizer は `predict_rate`（50 Hz）の周期で、最新の状態を現在時刻まで予測した TF map → base・`/ekf_pose`
+- **`/tf`・`/ekf_pose` の出し方**：ekf_localizer は `publish_rate`（50 Hz）の周期で、最新の状態を現在時刻まで予測した TF map → base・`/ekf_pose`
   （map→**LiDAR**、reliable + transient_local、KeepLast(1)）・`/ekf_odom`（v_xy・omega_yaw だけ）を出す。`tf_future_steps`（F）が 1 以上なら `/tf` の stamp を
   周期の刻み k·T（整数 ns）にそろえ、k0 − `tf_past_steps` + 1 〜 k0 + F の刻みを毎周期 1 メッセージで送り直す（tf2・MATLAB の `ros2tf` は同じ stamp を
   後の値で置き換える）。**環境ファイルは 4 つとも F = 2・P = 1**（点群が届いた時点で TF が揃っていない割合が 0 %。P ≥ 2 だと引く値が引く時刻で変わる。`dev_log.md` の 72）。
@@ -244,14 +244,19 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   sensor(4)（実機の `/ekf_pose`）はやめた（true にするとエラー）。図は `+plotter/myplotResult.m`、動画は `+plotter/myplotPointCloudVideo.m`、
   再生から図・動画までは localization_tools の `matlab/replay_matlab.sh`（`dev_log.md` の 61〜68・75・78・79）。
 - **ekf_localizer**（`src/ekf_core.cpp` など）：
+  - ファイル：ROS 非依存のライブラリ `ekf_core`（`pose_utils`・`ekf_core`・`observation_model`・`ndt_model`・`odom_model`・`lagged_ekf`・`tf_grid`）と、
+    ノード（`ekf_params`：パラメータ `EkfParams`、`ekf_filter`：組み立て `createFilter`、`ekf_localizer_node`）。コードの既定値は構造体の初期値だけ。
+    秒の時刻は `time`・`t`、`stamp` は ROS のメッセージの stamp だけ（`dev_log.md` の 94）。
+  - パラメータ名は 2026-11-13 に `predict_rate` → `publish_rate`、`accel_noise_tau` → `odom_noise_tau`、`gate_ndt` → `ndt_gate`、`gate_odom` → `odom_gate`
+    （古い名前は WARN を出して使わない）。
   - 状態は 11 個 `[x, y, z, roll, pitch, yaw, v_xy, v_z, omega_roll, omega_pitch, omega_yaw]`（添字 `kVxy`・`kVz`・`kOmegaRoll`・`kOmegaPitch`・`kOmegaYaw`、
     取り出しは `vXy()`・`omegaYaw()`）。`Q`・`P_init` も 11 要素（8 要素だと WARN を出して既定値）。
   - 予測は各軸独立：水平面を移動すると仮定した中点法（yaw_m = yaw + omega_yaw dt/2、x += v_xy dt cos(yaw_m) …）、z・roll・pitch は v_z・omega_roll・
     omega_pitch で線形に積分。速度 5 つはランダムウォーク。v_z・omega_roll・omega_pitch の `Q`・`P_init` が 0 ならその 3 つは 0 のまま（8 状態と同じ）。
   - **NDT の観測**（`src/ndt_model.cpp`）：LiDAR の姿勢を取付で base の姿勢 T_L·T_BL⁻¹ に直し、`R_ndt`（LiDAR、対角）をヤコビアンで伝播した相関込みの
-    6×6 で 6 成分を 1 回で更新する。ゲートは `gate_ndt`（既定 1e5 で実質無効。観測モデルの構造体の既定 16.81 はテスト用）。`/ekf_pose` の共分散は `lidarPoseJacobian`。
+    6×6 で 6 成分を 1 回で更新する。ゲートは `ndt_gate`（既定 1e5 で実質無効。テストは 16.81）。`/ekf_pose` の共分散は `lidarPoseJacobian`。
   - **オドメトリの観測**：`R_v = R0 + a0·v² + a1·ω² + (τ0·dv/dt)²`、`R_ω = R0 + a2·v² + a3·ω² + (τ1·dω/dt)²`（`OdomNoise`。`R_odom`・
-    `odom_noise_alpha`・`accel_noise_tau`）。v・omega には先に `odom_scale` を掛ける。メッセージの共分散は使わない。遅れの補正は `odom_delay`・`ndt_delay`（stamp から引く）。
+    `odom_noise_alpha`・`odom_noise_tau`）。v・omega には先に `odom_scale` を掛ける。メッセージの共分散は使わない。遅れの補正は `odom_delay`・`ndt_delay`（stamp から引く）。
   - NDT の観測の時刻はメッセージの stamp、オドメトリは `odom_stamp_mode`。遅れて届く NDT は `LaggedEkf` が巻き戻して入れ直す（`history_length` 1 s）。
   - トピックは `ndt_pose`・`odom`・`initialpose`（変えるときは remap。`*_topic` パラメータは 2026-11-11 にやめた）。
   - **ノイズの既定値（コード。`param/<env>/ekf_localizer.yaml` にも全項目）は実機 blue の値**：Q `[0.05, 0.05, 0.005, 0.05, 0.05, 0.05, 0.05, 0, 0.1, 0.1, 10]`、P_init `[0.2, 0.2, 0.2, 0.01, 0.01, 0.01, 0.01, 0, 0.01, 0.01, 0.01]`、

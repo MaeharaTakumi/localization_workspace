@@ -2269,3 +2269,28 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - コンテナを作り直した後：ekf_localizer のテスト 43 個が通った。ROS 2 の通信は 127.0.0.1 の UDP だけ（TCP なし、239.255.0.1 に参加しない）。
 
 ![実機の設定を Gazebo で走らせた軌跡（/tf の map → base。左が今回、右が 91 の録画）](dev_log_images/drive_tf_feedback_realflow.png)
+
+### 94. ekf_localizer の構造と名前を整理する（動作は変えない）。パラメータ名を 4 つ変える
+
+- 目的（ユーザー指示）：ekf_localizer の構造・ファイル名・関数名・変数名を見直し、指摘したものをすべて直す。ROS のパラメータ名も変える。
+- やったこと（ekf_localizer。計算は変えない）：
+  - ファイル：組み立て（`EkfFilter`・`createFilter`）を `ekf_params` から `ekf_filter.hpp/.cpp` に分けた。角度と姿勢の変換（`normalizeAngle`・`rpyFromRotation`・
+    `rotationFromRpy`、新しく `poseToVector`・`poseFromVector`・`wrapPoseAngles`）を `pose_utils.hpp/.cpp` にまとめた。
+    テスト `test_ekf_models.cpp`（914 行）を `test_ekf_core`・`test_ndt_model`・`test_odom_model` と共用の `test_helpers.hpp` に分けた（gtest は 5 つ）。
+  - 既定値を 1 か所に：`declareEkfParameters` は構造体（`EkfParams` と各 `Params`）の初期値から宣言する。観測モデルのゲートの既定も 1e5 にそろえ
+    （それまで構造体は 16.81・9.21、パラメータは 1e5）、テストは χ² の 99% を明示する。
+  - 重複をまとめた：ゲートつきの更新（連続棄却回数と d² の書き換え）を `ObservationModel::gatedUpdate` に、NDT の中心差分のヤコビアン 2 つを 1 つの関数に。
+  - 名前：秒の時刻は `time`・`t`、`stamp` は ROS のメッセージの stamp だけ（`Measurement::time`、`EkfCore::time()`、`LaggedEkf::latestTime()`）。
+    `EkfConfig` → `EkfParams`、`Outcome` → `ApplyResult`、`LaggedEkf::Result` → `AddResult`、`EkfFilter::lagged` → `ekf`、`kN` → `kStateSize`、
+    `prm_` → `params_`、ゲートの番号 `gate_` → `gate_index_`、`gate()` → `gateState()`、ゲートの値 `gate` → `gate_threshold`、`OdomNoise::update` → `variance`、
+    `publish()` → `publishPoseAndOdom()`、`tfMsg()` → `baseTransformMsg()`。
+  - パラメータ名：`predict_rate` → `publish_rate`、`accel_noise_tau` → `odom_noise_tau`、`gate_ndt` → `ndt_gate`、`gate_odom` → `odom_gate`。
+    古い名前を渡すと「renamed to」の WARN を出す（値は使わない）。localization_bringup の `param/<env>/ekf_localizer.yaml` 4 つと `docs/node_graph.md`、
+    README・`docs/ekf_flow.md` を合わせて直した。
+- 結果：
+  - テスト 40 個が通り、テストが出す数値（v rms 0.0575 → 0.0332、2 s 欠測後の位置誤差 0.886 → 0.037 m など 9 行）は変更前と 1 文字も違わない。
+  - 古い名前（`gate_ndt`・`predict_rate`）で起動すると WARN が 2 つ出て、既定値で動く。
+  - Gazebo の `spin360_w1_ekf2` を `replay_outputs.py` で再生：yaml の値が新しい名前で入り（`odom_scale` [1, 0.922] など）、エラーなし。
+    `/ekf_odom` の LiDAR の位置と同じ時刻の `/ndt_pose` の差は、変更後 xy 平均 24.9 mm・yaw 平均 0.626°、変更前のコードで同じ録画を再生して 22.4 mm・0.627°
+    （再生ごとのばらつきの範囲）。
+  - 図はない（動作を変えない整理のため）。
