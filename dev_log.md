@@ -2204,3 +2204,22 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - `plot/rerender_results.sh` のこのプログラムの行（`FULL=1` で計算し直す・`--from-json` で描き直す）。`results/` の前の図（`ndt_init_stops`・`*/ndt_noise`）はそのまま。
   - README・`calibrate.py`・`drive/profiles.yaml`・CLAUDE.md の説明。
 - 結果：`calibrate.py gazebo gazebo_calibration_20261112_181428` は消す前と同じ値（R_odom・R_ndt・倍率 [0.9992, 0.924]・取付 x −0.1711 m など）。
+
+### 91. テスト走行の取付を TF から引く（drive/config の mount をやめる）
+
+- 目的（ユーザー指示）：`drive/config/blue.yaml` の取付（`feedback.mount`）が red・white と同じ値のままで、localization_bringup の `param/blue/env.yaml`
+  （x −0.195、rpy [−0.0138, 0.0167, 0.0191]）と食い違っていた（x 2.5 cm・yaw 約 0.1°。走行中の区間の終わりの判断にだけ効く）。値を 2 か所に書かないよう、TF から引く。
+- やったこと：
+  - `drive_test.py`：`feedback` に `lidar: true` があれば、姿勢を LiDAR のものとして、取付（base -> LiDAR）を TF から引いて車体に直す。フレームは
+    `param/<target>/ekf_localizer.yaml` の `base_frame_id`・`lidar_frame_id`（`calibrate.py` と同じ読み方）。走る前に 5 s まで待ち、引けなければ止める。引いた値を表示する。
+  - `drive/config`：red・blue・white・real_in_gazebo の `mount` を消して `lidar: true` に。real_in_gazebo の説明の「real.yaml」（今は無い）を直した。
+  - `plot/plot_drive_paths.py`：`/ekf_pose` の軌跡は録画の `/tf_static` の取付で車体に直す（設定の `mount` を読んでいた）。
+- 結果：
+  - `CONFIG=real_in_gazebo run_test.sh gazebo spin check/mount_tf_realflow`：「mount base_footprint -> velodyne (from TF): xyz [−0.170, 0.000, 1.138]」
+    （前の設定の値と同じ）で最後まで走った（左 360.3°・右 −360.3°・前進 1.51 m）。軌跡の図も描けた（下。左が EKF、右が真値）。
+  - 何も動いていない `ROS_DOMAIN_ID` で red の設定を流すと、5.8 s で「取付の TF（base_link -> velodyne）が 5 s 引けない」と止まった。Gazebo の設定（真値）も今までどおり走り出した。
+  - 気づいたこと（今回の変更とは関係しない）：Gazebo の今のパラメータでは、旋回中に EKF の車体の位置が数 cm の範囲で細かく振れる
+    （左 1 周の 13 s で道のりの合計 3.0〜3.4 m、2 cm を超える跳びが 36〜41 回。11-12 の `check/no_autosync`（変更前）も同じ。82 の前の録画では 0.05 m）。
+    82 で Gazebo の R_ndt が blue の値（小さい）になった影響と考えられる（13〜17・82 の振動と同じ傾向）。
+
+![実機の設定を Gazebo で走らせた軌跡（取付は TF から）](dev_log_images/drive_mount_tf_realflow.png)
