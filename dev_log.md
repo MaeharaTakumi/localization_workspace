@@ -2309,3 +2309,21 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - Gazebo（MATLAB を後から起動）：base_footprint → velodyne は (−0.17, 0, 1.1377)、回転なし（URDF と一致）。transient_local の `/tf_static` を
     後から参加しても受け取れた（起動後 0.1 s）。引いて `rigidtform3d` にするのは 1 周期あたり 1.16 ms（周期 50 ms の 2.3 %）。
   - 図はない（値の受け渡しを足しただけのため）。
+
+### 96. MATLAB（CR_debug）の後輪間中心を今の時刻の TF にし、引けないときに警告する
+
+- 目的（ユーザー指示）：後輪間中心（Plant）は時刻を付けずに `/tf` を引いていた（＝木の中の一番新しい刻みの値で、ekf_localizer の F = 2 により
+  出した時刻の 20〜40 ms 先の予測値）。これを MATLAB の今の時刻の値にする。引けないときは最新の TF を使い、LiDAR・Plant とも警告を出す。
+  Plant に使った TF の stamp を残す。
+- やったこと（whill_common_matlab の `cr_debug`、`SensorFetcher`）：
+  - Plant：引く直前に `ros2time(node, "now")`（Gazebo・再生は `/clock`）を取り、その時刻の map → base を引く（ekf_localizer が出す刻みの補間）。
+    引けなければ最新の TF。使った TF の stamp を `Plant.Stamp` [s] に入れる（引けなければ `[]`）。`data.Now`（受け取った直後の時刻）は変えない。
+  - 警告：点群の stamp で引けない・点群が古い（今との差が `lidarStampThreshold` 以上）ときと、Plant を今の時刻で引けないときに、毎回 `warning` を出す
+    （ID `CR_debug:LidarTfFallback`・`CR_debug:PlantTfFallback`。`main.m` の `warning('off','all')` の後でも出るように `setTfTree` で有効にする）。
+    文には理由と、代わりに使った TF の stamp（無ければ「no TF yet」）を入れる。
+- 結果（実機 blue の `blue_spin5_20261016_160557` を `replay_matlab.sh` で再生、1828 周期）：
+  - 警告は起動直後だけ：Plant 199 回（195 回は `/clock` が来る前、4 回は EKF が `/tf` を出す前）、LiDAR 5 回（古い 2 回・TF が無い 3 回）。
+    EKF が出し始めてから（200 周期目以降の 1629 周期）は、Plant も点群も指定の時刻で引けなかった周期は 0。
+  - `Plant.Stamp − data.Now` は中央値 0 ms、5 % 点 −5.2 ms、最小 −14.9 ms、正（最新の TF に替えた周期）は 0（再生の時刻は `/clock` の刻みなので
+    同じ周期の 2 つの時刻はたいてい同じ値）。
+  - 図はない（時刻の選び方を変えただけのため）。

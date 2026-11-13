@@ -238,12 +238,12 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   後の値で置き換える）。**環境ファイルは 4 つとも F = 2・P = 1**（点群が届いた時点で TF が揃っていない割合が 0 %。P ≥ 2 だと引く値が引く時刻で変わる。`dev_log.md` の 72）。
 - **RViz** は `/tf` をそのまま読む（点群はその stamp の予測値の補間、視点の Target Frame `base_link` は最新の値。既定の視点は `TopDownOrtho`）。
   RViz2 は設定ファイルの `Hide Left Dock` などを起動時に効かせない（`dev_log.md` の 53〜57・69・70）。
-- **MATLAB**（CR_debug）：sensor(1) で `/velodyne_points` を購読し、`ros2tf`（既定 10 s 溜める）から、sensor(5)（Matching）は最新の map → base を `Plant` に、
+- **MATLAB**（CR_debug）：sensor(1) で `/velodyne_points` を購読し、`ros2tf`（既定 10 s 溜める）から、sensor(5)（Matching）は今の ROS の時刻の map → base（引けなければ最新）を `Plant` に（使った stamp は `Plant.Stamp`）、
   点群の stamp の map → velodyne（事前推定値。NDT の初期値と同じ値）を `data.LIDAR_pose` に入れる。点群の stamp の TF が引けないか、今の時刻と点群の
-  stamp の差が `lidarStampThreshold`（既定 0.1 s）以上なら最新の TF と組にする（`data.LIDAR_latest_tf`）。TF が 1 つも引けないときだけ前の組のまま。
+  stamp の差が `lidarStampThreshold`（既定 0.1 s）以上なら最新の TF と組にする（`data.LIDAR_latest_tf`）。TF が 1 つも引けないときだけ前の組のまま。点群・Plant とも指定の時刻で引けないと毎回 `warning`（ID `CR_debug:LidarTfFallback`・`CR_debug:PlantTfFallback` は `main.m` の `warning('off','all')` の後でも有効にしてある）。
   `sensordata.tform_velodyne` は取付 base → velodyne（`/tf_static` を毎周期引いた `rigidtform3d`。引けなければ `[]`。base は Plant と同じ）。
   sensor(4)（実機の `/ekf_pose`）はやめた（true にするとエラー）。図は `+plotter/myplotResult.m`、動画は `+plotter/myplotPointCloudVideo.m`、
-  再生から図・動画までは localization_tools の `matlab/replay_matlab.sh`（`dev_log.md` の 61〜68・75・78・79・95）。
+  再生から図・動画までは localization_tools の `matlab/replay_matlab.sh`（`dev_log.md` の 61〜68・75・78・79・95・96）。
 - **ekf_localizer**（`src/ekf_core.cpp` など）：
   - ファイル：ROS 非依存のライブラリ `ekf_core`（`pose_utils`・`ekf_core`・`observation_model`・`ndt_model`・`odom_model`・`lagged_ekf`・`tf_grid`）と、
     ノード（`ekf_params`：パラメータ `EkfParams`、`ekf_filter`：組み立て `createFilter`、`ekf_localizer_node`）。コードの既定値は構造体の初期値だけ。
