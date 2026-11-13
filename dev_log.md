@@ -2192,3 +2192,15 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - white（受けるノードなし）は「…を受けるノードが無い。見つかった車椅子の指令：/Drp5_whill_red/whill_node/cmd_vel」で止まった。何か入力して Enter で取りやめも動いた。
   - Gazebo の `run_test.sh gazebo spin` と `run_calibration.sh gazebo`（推定は 87・88 とほぼ同じ：omega の倍率 0.9231、取付 x −0.1713 m）は最後まで動いた。
   - 実機（LAN 越し、本物の whill_driver）では確かめていない。
+
+### 90. NDT の R を「真値 + ノイズ」の初期値で求めるプログラムを消す
+
+- 目的（ユーザー指示）：使っていない `calibration/calibrate_ndt_noise.py` を消す。
+  - 49 で `calibrate.py` から外して以来、どこからも呼ばれていない。R_ndt は `calibrate_noise.py` が走行中の残差から求める。
+  - 結果も使っていない（今の R_ndt は 4 つの環境とも blue の値。17 でこの方法の値を Gazebo の ekf_localizer に入れると振動に入りやすかった）。
+  - 真値が要るので Gazebo だけ。止まる区間から 10 s 使う作りで、今の推定用の動き（止まるのは 5 s）には合っていない。
+- やったこと：localization_tools から次を消した（プログラムは git の履歴にある）。
+  - `calibration/calibrate_ndt_noise.py`、それだけが使う `plot_noise.plot_init_noise`・`params.ndt_noise_sigma`・`param/calibrate.yaml` の `ndt_noise` の節。
+  - `plot/rerender_results.sh` のこのプログラムの行（`FULL=1` で計算し直す・`--from-json` で描き直す）。`results/` の前の図（`ndt_init_stops`・`*/ndt_noise`）はそのまま。
+  - README・`calibrate.py`・`drive/profiles.yaml`・CLAUDE.md の説明。
+- 結果：`calibrate.py gazebo gazebo_calibration_20261112_181428` は消す前と同じ値（R_odom・R_ndt・倍率 [0.9992, 0.924]・取付 x −0.1711 m など）。

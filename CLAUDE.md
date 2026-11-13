@@ -162,8 +162,7 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   **R_omega = 4 R_v (s_omega/s_v)² / b²**（左右の車輪のノイズが独立と仮定。b は Gazebo 0.492（`noise.gazebo_tread`）、実機は whill_odometry の `tread_width`）。
   R_ndt も走行中の残差から求める。残差のヒストグラム `_hist.png`（縦軸 `Relative frequency`、黒で縁取り、NDT の 6 つは範囲をそろえる、頑健な σ（1.4826 MAD）の
   正規分布 1 本）。`--truth` は Gazebo だけの検算。
-- `calibrate_ndt_noise.py`：NDT の R を「真値 + ノイズ」の初期値で計算し直して求める（Gazebo。止まる区間の 1 s 後から 10 s を `--start-offset` で 1 倍速で流す。
-  `--from-json` で図だけ描き直す。`dev_log.md` の 15）。`calibrate.py` からは外した。
+- NDT の R を「真値 + ノイズ」の初期値で求める `calibrate_ndt_noise.py`（Gazebo）は 2026-11-13 に消した（git の履歴にある。`dev_log.md` の 15・49・90）。
 - `calibrate_mount_scale.py`：**LiDAR の取付（x, y, yaw。roll・pitch・z は参考）とオドメトリの倍率を真値なしで推定**。取付の yaw は直進の区間で
   LiDAR の yaw − 車体の進む向きを各時刻で求め、RANSAC（0.3° 以内のインライアが最多）で平均する（`dev_log.md` の 49〜52）。
   **取付の roll・pitch・yaw は表示・`summary.yaml`・図とも rad**（`env.yaml` の `static_tfs` と同じ）。
