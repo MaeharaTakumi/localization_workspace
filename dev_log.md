@@ -2431,3 +2431,27 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - `./deploy.sh --test ekf_localizer`：gtest 45 件すべて通過。
   - 通信：`ROS_DOMAIN_ID=11`、`/root/fastdds_localhost.xml`、`rmw_fastrtps_cpp`。`demo_nodes_cpp talker` を起動して調べると、UDP は 3 つとも 127.0.0.1
     （10168・10169・送信用 48877）、TCP なし、239.x のマルチキャストにはどのインターフェースでも参加していない。
+
+## 103（2026-11-19）MATLAB の ros2tf で時刻を指定して引いた TF が線形補間かを確かめる
+
+- 目的：CR_debug が点群の stamp で `getTransform(tftree, 親, 子, stamp)` を引いたとき、前後の TF の線形補間になっているかを確かめる（ユーザー指示。MATLAB R2024b）。
+- やったこと：localization_tools に `matlab/check_tf_interpolation.m` を作った（ホストで `-batch`、`ROS_DOMAIN_ID=98`、録画・Gazebo は要らない）。
+  - MATLAB の 2 つのノードで、片方から既知の TF を送り、もう片方の `ros2tf` で SensorFetcher と同じ `canTransform` → `getTransform` で引く。
+  - 送る TF：map → base_link を 1 s おきに 3 つ（xyz と roll・pitch・yaw を変える。2 つ目の区間は yaw 150° → -120° で ±180° をまたぐ）、base_link → velodyne を `/tf_static`。
+  - 0〜2 s を 0.05 s おき＋キーフレームの ±1 ms（45 個）で引き、lerp+slerp（最短経路）・lerp+nlerp・Euler 線形・前の TF のままと比べた。
+  - 気づいたこと：R2024b の `sendTransform` に TransformStamped の配列を 1 回で渡すと、受け側の木には最初の 1 つしか入らなかった（1 つずつ送れば全部入る）。
+- 結果（MATLAB 24.2.0.2923080 (R2024b) Update 6）：時刻を指定した `getTransform` は**位置は線形、回転は最短経路の slerp** の補間と一致した。
+
+  | 補間 | 位置の最大誤差 [m] | 回転の最大誤差 [deg] |
+  |---|---|---|
+  | lerp + slerp（期待） | 9.9e-16 | 3.8e-14 |
+  | lerp + nlerp | 9.9e-16 | 4.5 |
+  | Euler 線形 | 9.9e-16 | 179.8 |
+  | 前の TF のまま | 2.25 | 150.4 |
+
+  - map → velodyne（lerp+slerp の map → base_link に static の取付を掛けたもの）とも一致（位置 1.2e-15 m、回転 3.9e-14°）。
+  - 区間の外（最初の TF の 10 ms 前・最後の TF の 10 ms 後）は `canTransform` が false、`getTransform` はエラー `ros:mlros2:tf:SourceTimeOutsideBuffer`
+    （外挿しない。CR_debug はこのとき今の時刻か最新の TF に切り替える）。
+  - 下の図の上は yaw（灰：期待の slerp、橙：Euler 線形、青の点：getTransform）、下は getTransform と各補間の回転の差。
+
+![ros2tf の時刻指定の補間（R2024b）](dev_log_images/103_tf_interpolation_R2024b.png)
