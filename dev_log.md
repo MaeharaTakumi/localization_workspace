@@ -2418,3 +2418,16 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 - やったこと：`ekf_localizer` の `OdomModel::Params` の既定値を変えた。`r` を [1e-8, 1e-8]（旧 [6.08e-3, 9.92e-4]）、`alpha` を [1e-6, 1e-3, 1e-6, 1e-3]（旧 0）。README の表も直した。
   テストのうち既定値を前提にした 2 つ（`FixedWhenAlphaAndTauAreZero`・`AccelTermsFromPreviousMessage`）は、`alpha` を 0 に明示した（式の確認が目的のため）。
 - 結果：`./deploy.sh --test ekf_localizer` で gtest 45 件すべて通過（0 failures）。最初は既定値を前提にした 3 件が落ちた。数値の再生評価はしていない。
+
+## 102（2026-11-19）イメージを再ビルドして test を作り直す
+
+- 目的：101 までの変更（オドメトリのノイズの既定値）を含むイメージでコンテナ `test` を動かす（ユーザー指示）。
+- やったこと：`docker compose build` → `docker compose up -d --force-recreate` → `./deploy.sh`。`.bash_history`・`.rviz2`・`.ssh/known_hosts`・`.gitconfig` を戻した。
+- 結果：
+  - イメージ `localizer_maehara:latest`（`59029279881c`）。9 パッケージの `colcon build` が通り、ekf_localizer の既定値と bringup の yaml が新しい値になっているのを確かめた。
+  - ビルドは約 1 時間 5 分かかった（いつもは約 10 分）。ROS 2 desktop を入れる apt の段がキャッシュを使わずに走った
+    （ベースの ubuntu:22.04 と Dockerfile は同じなので、ビルドキャッシュの記録が消えていたとみられる）。加えて `archive.ubuntu.com` の取得が遅く
+    （180 MB に 43 分・69.6 kB/s、`Ign:`（約 60 s のタイムアウト）が 29 回）、この段だけで 3533 s。
+  - `./deploy.sh --test ekf_localizer`：gtest 45 件すべて通過。
+  - 通信：`ROS_DOMAIN_ID=11`、`/root/fastdds_localhost.xml`、`rmw_fastrtps_cpp`。`demo_nodes_cpp talker` を起動して調べると、UDP は 3 つとも 127.0.0.1
+    （10168・10169・送信用 48877）、TCP なし、239.x のマルチキャストにはどのインターフェースでも参加していない。
