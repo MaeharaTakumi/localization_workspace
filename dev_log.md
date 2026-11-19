@@ -2455,3 +2455,23 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - 下の図の上は yaw（灰：期待の slerp、橙：Euler 線形、青の点：getTransform）、下は getTransform と各補間の回転の差。
 
 ![ros2tf の時刻指定の補間（R2024b）](dev_log_images/103_tf_interpolation_R2024b.png)
+
+## 104（2026-11-19）ros2tf の sendTransform に配列を渡すと最初の 1 つしか送られない
+
+- 目的：103 で、`sendTransform` に TF の配列を渡すと受け側に最初の 1 つしか入らなかった。どこで落ちるのかを切り分ける（ユーザー指示）。
+- やったこと：MATLAB の 2 つのノードで（`ROS_DOMAIN_ID=97`）、受け側に `ros2tf` に加えて `/tf`・`/tf_static` を生の `tf2_msgs/TFMessage` で購読する
+  `ros2subscriber` を置いた。送り方を 5 通り変え、線に出たメッセージと `canTransform` を見た（一度きりの調べなのでスクリプトはリポジトリに入れていない）。
+- 結果：配列を渡すと、**送る側が 1 つ目の TF だけを入れた TFMessage を 1 つ出していた**。受け側は TFMessage に 3 つ入っていれば 3 つとも入れる。
+  R2024b（24.2.0.2923080 Update 6）・R2026a（26.1.0.3346908 Update 5）で同じだった。
+
+  | 送り方 | 線に出た TFMessage | 受け側で引けたもの |
+  |---|---|---|
+  | A：`sendTransform(配列)`、同じ子・時刻 3 つ | 1 個（中身 1 つ目だけ） | 1 つ目だけ |
+  | B：`sendTransform(配列)`、子 3 つ・同じ時刻 | 1 個（中身 1 つ目だけ） | 1 つ目だけ |
+  | C：`ros2publisher` で TFMessage 1 つに 3 つ | 1 個（中身 3 つ） | 3 つとも |
+  | D：`sendTransform` を 1 つずつ 3 回 | 3 個（各 1 つ） | 3 つとも |
+  | E：`sendTransform(配列, UseStatic=true)`、子 3 つ | 1 個（中身 1 つ目だけ） | 1 つ目だけ |
+
+  - エラーも警告も出ない。`ros2tf` のヘルプには「scalar message or a message list」とあり、配列が渡せることになっている。
+  - whill_common_matlab・localization_tools で `sendTransform` を使っているのは 103 の `check_tf_interpolation.m` だけで、これは 1 つずつ送っている。
+    CR_debug は受けるだけなので影響しない。

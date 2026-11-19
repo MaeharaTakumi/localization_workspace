@@ -247,6 +247,7 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
     `tform`（取付 base → velodyne。`/tf_static` を引いた `rigidtform3d`。引けなければ `[]`）、`NDT_info`（`/localization_debug` の最新。stamp が無いのでこの点群の結果とは限らない。無ければ `[]`）。
   - 時刻を指定した `getTransform` は前後の TF の補間（位置は線形、回転は最短経路の slerp）。区間の外は外挿せず `canTransform` が false
     （R2024b で確認。localization_tools の `matlab/check_tf_interpolation.m`、`dev_log.md` の 103）。
+    `ros2tf` の `sendTransform` は TF の配列を渡しても最初の 1 つしか送らない（`/tf`・`/tf_static` とも。R2024b・R2026a。`dev_log.md` の 104）。複数送るときは 1 つずつ呼ぶ。
   - 点群・Plant とも指定の時刻で引けないと毎回 `warning`（ID `CR_debug:LidarTfFallback`・`CR_debug:PlantTfFallback` は `main.m` の `warning('off','all')` の後でも有効にしてある）。
   - sensor(4) は Gazebo の真値 `/wheelchair/pose` を Plant にする（実機で true にするとエラー）。sensor(7)（Localization Debug）・`data.Now`・`LIDAR_new`・`LIDAR_latest_tf`・
     `LIDAR_waiting`・`tform_velodyne`・`data` 直下の `NDT_info` はやめた（新しい点群かは `LIDAR.header.stamp` が前の周期と違うかで、点群の時刻でない TF かは
