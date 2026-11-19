@@ -239,12 +239,18 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 - **RViz**（NDT のとき `lidar_localization/rviz/localization2.rviz`）：赤い矢印と共分散は `/ekf_odom`（EKF の map → base。最新の 1 つ。NDT の `/current_pose` は表示しない）、TF の表示、点群・地図（2026-11-13。`dev_log.md` の 97・98）。
   RViz は `/tf` をそのまま読む（点群はその stamp の予測値の補間、視点の Target Frame `base_link` は最新の値。既定の視点は `TopDownOrtho`）。
   RViz2 は設定ファイルの `Hide Left Dock` などを起動時に効かせない（`dev_log.md` の 53〜57・69・70）。
-- **MATLAB**（CR_debug）：sensor(1) で `/velodyne_points` を購読し、`ros2tf`（既定 10 s 溜める）から、sensor(5)（Matching）は今の ROS の時刻の map → base（引けなければ最新）を `Plant` に（使った stamp は `Plant.Stamp`）、
-  点群の stamp の map → velodyne（事前推定値。NDT の初期値と同じ値）を `data.LIDAR_pose` に入れる。点群の stamp の TF が引けないか、今の時刻と点群の
-  stamp の差が `lidarStampThreshold`（既定 0.1 s）以上なら最新の TF と組にする（`data.LIDAR_latest_tf`）。TF が 1 つも引けないときだけ前の組のまま。点群・Plant とも指定の時刻で引けないと毎回 `warning`（ID `CR_debug:LidarTfFallback`・`CR_debug:PlantTfFallback` は `main.m` の `warning('off','all')` の後でも有効にしてある）。
-  `sensordata.tform_velodyne` は取付 base → velodyne（`/tf_static` を毎周期引いた `rigidtform3d`。引けなければ `[]`。base は Plant と同じ）。
-  sensor(4)（実機の `/ekf_pose`）はやめた（true にするとエラー）。図は `+plotter/myplotResult.m`、動画は `+plotter/myplotPointCloudVideo.m`、
-  再生から図・動画までは localization_tools の `matlab/replay_matlab.sh`（`dev_log.md` の 61〜68・75・78・79・95・96）。
+- **MATLAB**（CR_debug。2026-11-19 から、`dev_log.md` の 99）：sensor(1) で `/velodyne_points` を購読し、最新の点群を毎周期 `data.LIDAR` に入れる（TF が無くても渡す）。
+  sensor(5)（Matching）は `/localization_debug` を購読し、`ros2tf`（既定 10 s 溜める）から毎周期引き直す（前の周期の値は持ち越さない）：
+  - `Plant`：今の ROS の時刻の map → base（引けなければ最新。base は Gazebo `base_footprint`、実機 `base_link`）。使った TF の stamp は `Plant.Stamp` [s]。
+  - `data.LIDAR_pose`：点群の stamp の map → velodyne（事前推定値。NDT の初期値と同じ値）。今の時刻と点群の stamp の差が `lidarStampThreshold`（既定 0.2 s）以上なら
+    今の時刻の TF（どちらも引けなければ最新。TF が 1 つも無ければ `[]`）。フィールドは X, Y, Z, Roll, Pitch, Yaw、`Stamp`（使った TF の stamp [s]）、
+    `tform`（取付 base → velodyne。`/tf_static` を引いた `rigidtform3d`。引けなければ `[]`）、`NDT_info`（`/localization_debug` の最新。stamp が無いのでこの点群の結果とは限らない。無ければ `[]`）。
+  - 点群・Plant とも指定の時刻で引けないと毎回 `warning`（ID `CR_debug:LidarTfFallback`・`CR_debug:PlantTfFallback` は `main.m` の `warning('off','all')` の後でも有効にしてある）。
+  - sensor(4) は Gazebo の真値 `/wheelchair/pose` を Plant にする（実機で true にするとエラー）。sensor(7)（Localization Debug）・`data.Now`・`LIDAR_new`・`LIDAR_latest_tf`・
+    `LIDAR_waiting`・`tform_velodyne`・`data` 直下の `NDT_info` はやめた（新しい点群かは `LIDAR.header.stamp` が前の周期と違うかで、点群の時刻でない TF かは
+    `LIDAR_pose.Stamp` が点群の stamp と違うかで分かる）。
+  - 図は `+plotter/myplotResult.m`（点群の古さは `Plant.Stamp` − 点群の stamp）、動画は `+plotter/myplotPointCloudVideo.m`、
+    再生から図・動画までは localization_tools の `matlab/replay_matlab.sh`（`dev_log.md` の 61〜68・75・78・79・95・96・99）。
 - **ekf_localizer**（`src/ekf_core.cpp` など）：
   - ファイル：ROS 非依存のライブラリ `ekf_core`（`pose_utils`・`ekf_core`・`observation_model`・`ndt_model`・`odom_model`・`lagged_ekf`・`tf_grid`）と、
     ノード（`ekf_params`：パラメータ `EkfParams`、`ekf_filter`：組み立て `createFilter`、`ekf_localizer_node`）。コードの既定値は構造体の初期値だけ。

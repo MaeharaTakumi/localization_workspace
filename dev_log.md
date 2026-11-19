@@ -2351,3 +2351,53 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   それだけ動くまで矢印が止まる）、矢印の形・色・共分散の表示は前の NDT の矢印と同じ。
 - 結果（Gazebo、`env:=gazebo`）：RViz（`rviz2`）が `/ekf_odom` を reliable で購読し、ekf_localizer の配信とつながった。中身は map → `base_footprint`
   （開始位置で x 80.06・y 7.03・z 12.34）と共分散（x の分散 2.7e−3）。画面はロック中で撮れなかったので、画像はない。
+
+## 2026-11-19
+
+### 99. MATLAB（CR_debug）で LiDAR の姿勢を毎周期引き直し、LIDAR_pose にまとめる
+
+- 目的（ユーザー指示）：点群と LiDAR の姿勢を組にする処理（前の組を持ち越す・待つ・最新の TF と組にする）が複雑だったので、毎周期最新の点群を受け取り、
+  今の時刻との差がしきい値未満なら点群の stamp の TF、以上なら今の時刻の TF を引く形にする。あわせて estimator に渡す変数を整理する。
+- やったこと（whill_common_matlab の `cr_debug`）：
+  - `SensorFetcher`：点群は TF が無くても毎周期 `data.LIDAR` に入れる。LiDAR の姿勢は毎周期引き直す（前の周期の値を持ち越さない）。
+    引けなければ最新、TF が 1 つも無ければ `LIDAR_pose = []`。点群の stamp で引けなかった周期は警告（`CR_debug:LidarTfFallback`）。
+  - `data.LIDAR_pose` のフィールドを X, Y, Z, Roll, Pitch, Yaw, `Stamp`（使った TF の stamp）, `tform`（取付 base → velodyne。前の `data.tform_velodyne`）,
+    `NDT_info`（前の `data.NDT_info`）にした。
+  - やめたもの：
+    - `data.LIDAR_new`：新しい点群かは stamp の変化で分かる。
+    - `LIDAR_latest_tf`：`LIDAR_pose.Stamp` が点群の stamp と違うかで分かる。
+    - `LIDAR_waiting`。
+    - `data.Now`：同じ今の時刻が `Plant.Stamp` に入る。
+    - `Plant.info`。
+  - `/localization_debug` を sensor(7) から sensor(5) のトピックに移した。sensor(5) だけで `NDT_info` が入り、`main.m` の sensor は元の 1〜6 に戻った。
+  - しきい値 `lidarStampThreshold` は 0.2 s にした（ユーザーが選んだ）。0.1 s だと、ふつうの走行でも点群の最後の周期が 0.1 s を越えて、今の時刻の TF に切り替わったため（下の表）。
+  - 図（`myplotResult`）：
+    - 点群の古さは `Plant.Stamp` − 点群の stamp（古い記録は `data.Now`）。
+    - NDT の情報は `LIDAR_pose.NDT_info`（古い記録は `NDT_info`）。
+    - 新しい点群は stamp の変化で判定する。
+
+    localization_tools の `matlab/check_cr_debug.m`・`check_cr_debug_plot.m`・`plot/plot_cr_debug_pairs.py` も新しい形に合わせた。
+- 結果（Gazebo の `gazebo_spin5_20261016_111637`（106 s、その場で 5 周）を `replay_matlab.sh` で再生）：
+
+  | | 変更前（`f59421d`） | 変更後 0.1 s | 変更後 0.2 s |
+  |---|---|---|---|
+  | 周期 | 2411 | 2413 | 2424 |
+  | 点群のある周期（うち姿勢なし） | 2199（姿勢が無いと渡さない） | 2213（18） | 2216（18） |
+  | 姿勢の付いた新しい点群 | 1026 | 1025 | 1029 |
+  | 点群の stamp 以外の TF を使った周期 | 1 | 37 | 0 |
+  | 同じ点群で途中から姿勢が変わったもの | 0 | 36（yaw 中央値 5.4°・最大 8.3°、xy 最大 0.10 m） | 0 |
+  | 点群の古さ（全周期）平均 / 最大 | 56.0 / 116 ms | 50.7 / 110 ms | 53.3 / 109 ms |
+  | 点群の古さ（新しい点群の周期）平均 | 29.6 ms | 23.1 ms | 25.9 ms |
+  | `NDT_info`・`tform` のある周期 | 2199・2365 | 2195・2195 | 2198・2198 |
+  | 警告 LiDAR / Plant | 18 / 212 | 55 / 218 | 18 / 226 |
+
+  - 0.1 s で切り替わった 36 個は、どれもその点群の最後の周期（古さ 100〜110 ms）。止まっているときの変化は 1 mm 以下。
+    回っているとき（約 1 rad/s）は、yaw が約 1 rad/s × 0.1 s ずれる。
+  - 点群の古さは、ふつうの走行で最大 109〜116 ms（LiDAR 10 Hz の間隔 100 ms ＋ MATLAB の周期のずれ）。0.2 s ならふつうの走行では切り替わらない。
+  - 0.2 s の警告：
+    - LiDAR 18 回：すべて起動直後で、EKF が `/tf` を出す前（古さ 0.06 s）。
+    - Plant 226 回：`/clock` が来る前 208 回、EKF の前 18 回。
+  - 姿勢の無い点群 18 周期も起動直後だけ。古さの差は MATLAB の 20 Hz と LiDAR の 10 Hz のずれ方による回ごとのばらつき。
+  - 図 10 枚・動画（2197 フレーム）が作れた。下は 0.2 s の点群の古さ（青：毎周期、橙：新しい点群を受け取った周期）。
+
+![点群の古さ（Gazebo spin5、しきい値 0.2 s）](dev_log_images/99_lidar_age_gazebo_spin5.jpg)
