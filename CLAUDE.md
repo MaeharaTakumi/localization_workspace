@@ -234,8 +234,9 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   NDT の `/path` は配信しない（ソースでコメントアウト。`dev_log.md` の 83）。
 - **`/tf`・`/ekf_pose` の出し方**：ekf_localizer は `publish_rate`（50 Hz）の周期で、最新の状態を現在時刻まで予測した TF map → base・`/ekf_pose`
   （map→**LiDAR**、reliable + transient_local、KeepLast(1)）・`/ekf_odom`（v_xy・omega_yaw だけ）を出す。`tf_future_steps`（F）が 1 以上なら `/tf` の stamp を
-  周期の刻み k·T（整数 ns）にそろえ、k0 − `tf_past_steps` + 1 〜 k0 + F の刻みを毎周期 1 メッセージで送り直す（tf2・MATLAB の `ros2tf` は同じ stamp を
-  後の値で置き換える）。**環境ファイルは 4 つとも F = 2・P = 1**（点群が届いた時点で TF が揃っていない割合が 0 %。P ≥ 2 だと引く値が引く時刻で変わる。`dev_log.md` の 72）。
+  周期の刻み k·T（整数 ns）にそろえ、k0 − `tf_past_steps` + 1 〜 k0 + F の刻みを毎周期 1 メッセージで送り直す。**tf2（コンテナの Humble）・MATLAB の
+  `ros2tf` は同じ stamp を置き換えずに重ねて持つ**：刻みちょうどは最後に届いた値（バッファの一番古い刻みだけ最初の値）、刻みの間（点群の stamp など）は
+  **前の刻みの最後に届いた値と後の刻みの最初に届いた値**の補間（後の刻みの送り直しは補間に効かない。`dev_log.md` の 105）。**環境ファイルは 4 つとも F = 2・P = 1**（点群が届いた時点で TF が揃っていない割合が 0 %。P ≥ 2 だと引く値が引く時刻で変わる。`dev_log.md` の 72）。
 - **RViz**（NDT のとき `lidar_localization/rviz/localization2.rviz`）：赤い矢印と共分散は `/ekf_odom`（EKF の map → base。最新の 1 つ。NDT の `/current_pose` は表示しない）、TF の表示、点群・地図（2026-11-13。`dev_log.md` の 97・98）。
   RViz は `/tf` をそのまま読む（点群はその stamp の予測値の補間、視点の Target Frame `base_link` は最新の値。既定の視点は `TopDownOrtho`）。
   RViz2 は設定ファイルの `Hide Left Dock` などを起動時に効かせない（`dev_log.md` の 53〜57・69・70）。
@@ -246,7 +247,8 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
     今の時刻の TF（どちらも引けなければ最新。TF が 1 つも無ければ `[]`）。フィールドは X, Y, Z, Roll, Pitch, Yaw、`Stamp`（使った TF の stamp [s]）、
     `tform`（取付 base → velodyne。`/tf_static` を引いた `rigidtform3d`。引けなければ `[]`）、`NDT_info`（`/localization_debug` の最新。stamp が無いのでこの点群の結果とは限らない。無ければ `[]`）。
   - 時刻を指定した `getTransform` は前後の TF の補間（位置は線形、回転は最短経路の slerp）。区間の外は外挿せず `canTransform` が false
-    （R2024b で確認。localization_tools の `matlab/check_tf_interpolation.m`、`dev_log.md` の 103）。
+    （R2024b で確認。localization_tools の `matlab/check_tf_interpolation.m`、`dev_log.md` の 103）。実際の ekf_localizer の TF でも、
+    同じ刻みを送り直す扱いを含めて tf2 と同じ値になる（`matlab/replay_tf_interpolation.sh`、`dev_log.md` の 105）。
     `ros2tf` の `sendTransform` は TF の配列を渡しても最初の 1 つしか送らない（`/tf`・`/tf_static` とも。R2024b・R2026a。`dev_log.md` の 104）。複数送るときは 1 つずつ呼ぶ。
   - 点群・Plant とも指定の時刻で引けないと毎回 `warning`（ID `CR_debug:LidarTfFallback`・`CR_debug:PlantTfFallback` は `main.m` の `warning('off','all')` の後でも有効にしてある）。
   - sensor(4) は Gazebo の真値 `/wheelchair/pose` を Plant にする（実機で true にするとエラー）。sensor(7)（Localization Debug）・`data.Now`・`LIDAR_new`・`LIDAR_latest_tf`・
