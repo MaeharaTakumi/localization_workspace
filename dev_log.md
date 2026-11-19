@@ -2411,3 +2411,10 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - `odom_noise_tau`：`[0, 0]`（変えず。指定の値と同じ）
   - コメントの「R_odom は実機 blue の値」を外した。`ekf_localizer` のコードは変えていない（既定の R_odom は従来の値のまま）。
 - 結果：走らせて確かめていない（ユーザー指示で確認の実行は不要）。数値の効果は未評価。
+
+## 101（2026-11-19）ekf_localizer のコードの既定値をオドメトリのノイズの指定の値にする
+
+- 目的：コードの既定値も項目 100 の yaml と同じにする（ユーザー指示。yaml の無い起動でも同じ値になる）。
+- やったこと：`ekf_localizer` の `OdomModel::Params` の既定値を変えた。`r` を [1e-8, 1e-8]（旧 [6.08e-3, 9.92e-4]）、`alpha` を [1e-6, 1e-3, 1e-6, 1e-3]（旧 0）。README の表も直した。
+  テストのうち既定値を前提にした 2 つ（`FixedWhenAlphaAndTauAreZero`・`AccelTermsFromPreviousMessage`）は、`alpha` を 0 に明示した（式の確認が目的のため）。
+- 結果：`./deploy.sh --test ekf_localizer` で gtest 45 件すべて通過（0 failures）。最初は既定値を前提にした 3 件が落ちた。数値の再生評価はしていない。
