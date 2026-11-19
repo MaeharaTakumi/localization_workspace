@@ -2401,3 +2401,13 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - 図 10 枚・動画（2197 フレーム）が作れた。下は 0.2 s の点群の古さ（青：毎周期、橙：新しい点群を受け取った周期）。
 
 ![点群の古さ（Gazebo spin5、しきい値 0.2 s）](dev_log_images/99_lidar_age_gazebo_spin5.jpg)
+
+## 100（2026-11-19）ekf_localizer のオドメトリのノイズを指定の値にそろえる
+
+- 目的：オドメトリの観測ノイズを指定の値にする（ユーザー指示）。
+- やったこと：`localization_bringup` の `param/{blue,red,white,gazebo}/ekf_localizer.yaml` の 3 項目を変えた。
+  - `R_odom`：`[0.00608, 0.000992]` → `[1.0e-8, 1.0e-8]`
+  - `odom_noise_alpha`：`[0, 0, 0, 0]` → `[1.0e-6, 1.0e-3, 1.0e-6, 1.0e-3]`
+  - `odom_noise_tau`：`[0, 0]`（変えず。指定の値と同じ）
+  - コメントの「R_odom は実機 blue の値」を外した。`ekf_localizer` のコードは変えていない（既定の R_odom は従来の値のまま）。
+- 結果：走らせて確かめていない（ユーザー指示で確認の実行は不要）。数値の効果は未評価。
