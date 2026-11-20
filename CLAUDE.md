@@ -75,7 +75,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **録画・地図・図はホストの `docker/data/{bags,map,fig}` を割り当てたもの**（コンテナを作り直しても消えない。中で作ったファイルは root の持ち物）。
   地図 `SC10_4_0.05.pcd`（Gazebo の建物）と `10build_4F_C_20260414.pcd`（実機 blue の録画）は `data/map` にある。
 - ホストの `net.core.rmem_max`・`rmem_default` は 8 MB 以上にする（実機の点群 314 kB が受信バッファ 208 kB からあふれ、再生で約半分落ちる。
-  `sysctl -w` なので再起動で戻る。sudo は Claude Code の中から動かないのでユーザーが行う。`dev_log.md` の 66・67）。
+  同じソケットで受ける `/tf` も落ちて再送を待ち、最大 2 s 遅れて届く（rviz2 は点群を描かず、CR_debug は古い TF を使う）。
+  `sysctl -w` なので再起動で戻る（実機の録画の再生・実機の前に確かめる）。sudo は Claude Code の中から動かないのでユーザーが行う。`dev_log.md` の 66・67・108）。
 - NVIDIA ドライバの自動更新で `docker start` が「libnvidia-egl-wayland.so.1.1.17: no such file」と止まったら、ホストに古い名前から新しい版への
   リンクを作る（sudo が要るのでユーザーが行う。2026-10-15 に 1.1.17 → 1.1.21 で起きた）。
 
@@ -253,8 +254,9 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
     `ros2tf` の `sendTransform` は TF の配列を渡しても最初の 1 つしか送らない（`/tf`・`/tf_static` とも。R2024b・R2026a。`dev_log.md` の 104）。複数送るときは 1 つずつ呼ぶ。
   - 点群・Plant とも指定の時刻で引けないと毎回 `warning`（ID `CR_debug:LidarTfFallback`・`CR_debug:PlantTfFallback` は `main.m` の `warning('off','all')` の後でも有効にしてある）。
   - 同じ再生で rviz2 と比べると（`matlab/replay_cr_debug_rviz.sh`、`dev_log.md` の 107）、点群の stamp で引けた周期の `LIDAR_pose` は rviz2 が描いた値とすべて一致する。
-    違うのは TF が遅れて届いたとき：rviz2 は待ち（溢れた点群は捨てる）、CR_debug は待たずに最新の TF を使う。blue の再生（`rmem_max` 208 kB）では
-    TF が最大 2 s 遅れて届くことがあり、CR_debug は 0.8 s 古い TF を使って点群の stamp の値と最大 0.16 m・48° 違った（遅れの理由は未確認）。
+    違うのは TF が遅れて届いたとき：rviz2 は待ち（溢れた点群は捨てる）、CR_debug は待たずに最新の TF を使う。blue の再生で `rmem_max` が 208 kB のときは
+    TF が最大 2 s 遅れて届き、CR_debug は 0.8 s 古い TF を使って点群の stamp の値と最大 0.16 m・48° 違った。8 MB では遅れは無く、
+    最新の TF を使う周期も無かった（起動時を除く。`dev_log.md` の 108）。
   - sensor(4) は Gazebo の真値 `/wheelchair/pose` を Plant にする（実機で true にするとエラー）。sensor(7)（Localization Debug）・`data.Now`・`LIDAR_new`・`LIDAR_latest_tf`・
     `LIDAR_waiting`・`tform_velodyne`・`data` 直下の `NDT_info` はやめた（新しい点群かは `LIDAR.header.stamp` が前の周期と違うかで、点群の時刻でない TF かは
     `LIDAR_pose.Stamp` が点群の stamp と違うかで分かる）。

@@ -2640,3 +2640,29 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 ![同じ再生で CR_debug と rviz2 が点群の stamp で引いた TF（Gazebo spin5）](dev_log_images/107_rviz_cr_debug_gazebo_spin5.png)
 
 ![同じ再生で CR_debug と rviz2 が点群の stamp で引いた TF（実機 blue spin5。黄は最新の TF を使った周期）](dev_log_images/107_rviz_cr_debug_blue_spin5.png)
+
+## 108（2026-11-20）受信バッファを 8 MB にして blue を流し直す（107 の TF の遅れ）
+
+- 目的：107 の blue では TF が最大 2 s 遅れて届き、CR_debug が古い TF を使った。遅れの理由が、ホストの受信バッファ
+  （`rmem_max` 208 kB）より大きい点群（321 kB）かを確かめる。
+- やったこと：ユーザーが `net.core.rmem_max`・`rmem_default` を 8 MB にした（ホストとコンテナで確認）。107 と同じ録画を
+  `matlab/replay_cr_debug_rviz.sh`（出力 `blue_spin5_rmem8m`）で流し直した。変えたのは受信バッファだけ。
+- 結果：TF の遅れは無くなり、CR_debug は点群の stamp で引けない周期が無くなった（起動時の 1 回を除く）。
+
+  | blue spin5 | 208 kB（107） | 8 MB |
+  |---|---|---|
+  | rviz2 の tf2 に TF が届く間隔（最大） | 1983 ms（100 ms 以上が 5 回） | 34.5 ms |
+  | rviz2：点群の stamp で引いた点群・描いた点群 | 1511・1447 | 1511・1511 |
+  | rviz2：「queue is full」（起動時を含む） | 4 | 1（起動時、最初の TF より前の点群） |
+  | CR_debug：受け取った点群・点群の stamp で引いた点群 | 1469・1443 | 1499・1491 |
+  | CR_debug：最新の TF を使った周期（起動時の 1 回を除く） | 19（最大 0.16 m・48°） | 0 |
+  | CR_debug：rviz2 より先に TF を受け取った周期 | 88 | 0 |
+  | 点群の stamp で引いた値：rviz2 が描いた値との差（最大） | 0 m・4.5e-14° | 0 m・4.5e-14° |
+
+  - 107 の遅れは、受信バッファから点群があふれ、同じソケットで受ける `/tf` も落ちて再送を待ったためとみてよい（1 回ずつの比較）。
+  - 106 の blue（208 kB）で描かれなかった 40 個の点群（18.8〜19.5 s、42.2〜43.5 s）も、同じ時刻に TF が 1.3 s・1.9 s 遅れていた。
+  - 8 MB では、CR_debug が点群の stamp で引いた 1622 周期すべてで、値は rviz2 が描いた値と同じだった。引いた時刻に rviz2 の tf2 に入っていた TF での
+    決まりの値とも合った。CR_debug が引き終えたのは、rviz2 が描くために引いた時刻の中央値 19 ms 後（−21〜64 ms）。
+  - 受信バッファは `sysctl -w` なので、再起動すると 208 kB に戻る。実機の録画を再生するとき・実機で動かすときは、先に確かめる（CLAUDE.md）。
+
+![受信バッファ 8 MB で、同じ再生で CR_debug と rviz2 が点群の stamp で引いた TF（実機 blue spin5）](dev_log_images/108_rviz_cr_debug_blue_spin5_rmem8m.png)
