@@ -135,6 +135,7 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 | `eval/` | 録画の再生（`replay_outputs.py`）、録画の情報（`bag_info.py`）・置き場所（`bag_paths.py`） |
 | `plot/` | 図（走行の軌跡・MATLAB が `/tf` から引く値・RViz の点群に使う姿勢・CR_debug の組）。`rerender_results.sh` で今のツールで描ける `results/` の図を描き直す |
 | `matlab/` | MATLAB の確認（`replay_matlab.sh` はホストで実行） |
+| `rviz/` | rviz2 が引く TF の確認（`replay_rviz_tf.sh`。`tf_hook.cpp` を `LD_PRELOAD` で rviz2 に入れて tf2 の出し入れを記録する。コンテナの中で実行） |
 | `record_rviz.sh` | RViz の画面の録画（ホストで実行、ffmpeg の x11grab） |
 
 ### テスト走行と録画（`drive/`）
@@ -236,9 +237,9 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   （map→**LiDAR**、reliable + transient_local、KeepLast(1)）・`/ekf_odom`（v_xy・omega_yaw だけ）を出す。`tf_future_steps`（F）が 1 以上なら `/tf` の stamp を
   周期の刻み k·T（整数 ns）にそろえ、k0 − `tf_past_steps` + 1 〜 k0 + F の刻みを毎周期 1 メッセージで送り直す。**tf2（コンテナの Humble）・MATLAB の
   `ros2tf` は同じ stamp を置き換えずに重ねて持つ**：刻みちょうどは最後に届いた値（バッファの一番古い刻みだけ最初の値）、刻みの間（点群の stamp など）は
-  **前の刻みの最後に届いた値と後の刻みの最初に届いた値**の補間（後の刻みの送り直しは補間に効かない。`dev_log.md` の 105）。**環境ファイルは 4 つとも F = 2・P = 1**（点群が届いた時点で TF が揃っていない割合が 0 %。P ≥ 2 だと引く値が引く時刻で変わる。`dev_log.md` の 72）。
+  **前の刻みの最後に届いた値と後の刻みの最初に届いた値**の補間（後の刻みの送り直しは補間に効かない。`dev_log.md` の 105）。tf2 のソース（`TimeCache::insertData` は同じ stamp の値の手前に入れ、`findClosest` は t 以前で一番手前の値とそのひとつ手前の値を返す）どおりで、rviz2 の中でも同じ（`dev_log.md` の 106）。**環境ファイルは 4 つとも F = 2・P = 1**（点群が届いた時点で TF が揃っていない割合が 0 %。P ≥ 2 だと引く値が引く時刻で変わる。`dev_log.md` の 72）。
 - **RViz**（NDT のとき `lidar_localization/rviz/localization2.rviz`）：赤い矢印と共分散は `/ekf_odom`（EKF の map → base。最新の 1 つ。NDT の `/current_pose` は表示しない）、TF の表示、点群・地図（2026-11-13。`dev_log.md` の 97・98）。
-  RViz は `/tf` をそのまま読む（点群はその stamp の予測値の補間、視点の Target Frame `base_link` は最新の値。既定の視点は `TopDownOrtho`）。
+  RViz は `/tf` をそのまま読む（既定の視点は `TopDownOrtho`）。点群は受け取ったときに 1 回だけ点群の stamp で引いた姿勢で描く（前の刻みの最後・後の刻みの最初の値の補間。再生の後に MATLAB で引いた値と同じ）。視点の Target Frame `base_link` と TF の表示は毎描画、最新（時刻 0）で引くので、一番新しい刻み（今より 20〜40 ms 先の予測。まだ 1 回しか届いていない値）になる（`dev_log.md` の 106）。
   RViz2 は設定ファイルの `Hide Left Dock` などを起動時に効かせない（`dev_log.md` の 53〜57・69・70）。
 - **MATLAB**（CR_debug。2026-11-19 から、`dev_log.md` の 99）：sensor(1) で `/velodyne_points` を購読し、最新の点群を毎周期 `data.LIDAR` に入れる（TF が無くても渡す）。
   sensor(5)（Matching）は `/localization_debug` を購読し、`ros2tf`（既定 10 s 溜める）から毎周期引き直す（前の周期の値は持ち越さない）：

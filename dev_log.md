@@ -2533,3 +2533,57 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 ![実際の ekf_localizer の TF と MATLAB の補間（Gazebo spin5、R2024b）](dev_log_images/105_tf_interpolation_ekf_gazebo_spin5.png)
 
 ![実際の ekf_localizer の TF と MATLAB の補間（実機 blue spin5、R2024b）](dev_log_images/105_tf_interpolation_ekf_blue_spin5.png)
+
+## 106（2026-11-20）rviz2 が ekf_localizer の TF をどう引いているかを、rviz2 の中で確かめる
+
+- 目的：105 では「C++ の tf2 も同じなので RViz も同じ値を引いているとみられる」と推測にとどめた。rviz2 が実際に引いた値と、どの時刻で引くかを確かめる（ユーザーの質問「rviz2 側はどうか」）。
+- やったこと：
+  - コンテナと同じ版のソース（rviz 11.2.29、tf2・tf2_ros 0.25.24）を読んだ。
+    - tf2 の `TimeCache::insertData` は、同じ stamp の値の手前に新しい値を入れる（まったく同じ値は入れない）。
+      `findClosest` は、t 以前で一番手前の値（前の刻みの最後に届いた値）と、そのひとつ手前の値（後の刻みの最初に届いた値）を返す。
+      t = 0 は先頭（一番新しい刻みの最後の値）、一番古い刻みちょうどは末尾（最初の値）。105 の決まりはソースのとおりだった。
+    - rviz2 の点群（`localization2.rviz` の PointCloud2、Decay Time 0）は、受け取ったときに点群の stamp で引いた姿勢で描き続ける（引き直さない）。
+    - 視点の Target Frame（`base_link`）と TF の表示は、描画のたびに最新（時刻 0。Time の SyncMode 0）で引く。
+    - `/ekf_odom`（Odometry）と地図は map のままなので、TF の補間は関係ない。
+  - localization_tools に `rviz/` を作った（コンテナの中で実行）。
+    - `rviz/tf_hook.cpp`：rviz2 に `LD_PRELOAD` で入れ、tf2 に入った TF（`BufferCore::setTransform`）と引いた TF（`lookupTransform`）を 1 行ずつ書く（値は変えない）。
+      libtf2 は plugin から dlopen で読まれるので、元の関数は `libtf2.so` のハンドルから引く。
+    - `rviz/replay_rviz_tf.sh`：rviz2（`use_sim_time`）を起動して `RECORD=0` の `replay_outputs.py` で再生し（`ROS_DOMAIN_ID=99`）、終わったら解析する。
+    - `rviz/check_rviz_tf_interpolation.py`：引いたときに入っていた TF から決まりの値を計算して、rviz2 の値と比べる。点群の stamp で引いたものは、
+      再生の後の値（後から届いた分も入れた決まりの値＝105 で MATLAB が引いた値、最後に届いた値どうしの補間）とも比べる。
+    - フックの確認：105 の送り直しの並びを Python の `tf2_ros.Buffer`（中身は C++ の BufferCore）に入れた。記録した値も解析の決まりの値も
+      0.1、1.5、−0.5、0.55、1.75 になった。
+  - 録画は 105 と同じ（Gazebo `gazebo_spin5_20261016_111637`、実機 blue `blue_spin5_20261016_160557`）。
+- 結果：rviz2 が引いた値は、引いたときに入っていた TF での tf2 の決まりとすべて一致した（差 1.3e-13° 以下）。
+
+  | | Gazebo | blue |
+  |---|---|---|
+  | rviz2 の tf2 に入った刻み（3 回届いた刻み） | 5128（5124） | 3700（3696） |
+  | 点群：描画に使う値（2 回目）と再生の後の決まりの値の差（最大） | 1.4e-14 m・6.4e-14°（1041 回） | 2.0e-15 m・8.3e-14°（1426 回） |
+  | 点群：描画に使う値と最後に届いた値どうしの補間の差（95 % / 最大） | 1.2e-4 / 0.044 m、0.024 / 1.6° | 7.6e-3 / 0.041 m、0.21 / 1.2° |
+  | 点群：上の差が 1 mm 以上・0.1° 以上 | 2.0 %・1.8 % | 50.8 %・20.1 % |
+  | 点群：描画のために引いたとき届いていた回数（前・後の刻み） | 3・3 が 791、3・2 が 248 | 3・3 が 1391、3・2 が 34、2・3 が 1 |
+  | 最新（時刻 0）で引いた回数・その刻みが届いていた回数 | 16915 回・1 回だけ（記録の数え方の都合の 1 回を除く） | 9644 回・1 回だけ（同じく 1 回を除く） |
+  | 最新：その刻みの最後に届いた値との差（95 % / 最大） | 2.9e-3 / 0.10 m、0.18 / 3.0° | 0.011 / 0.042 m、0.32 / 3.6° |
+
+  - **rviz2 の点群は、105 で MATLAB が再生の後に引いた値と同じ姿勢で描かれている**（前の刻みの最後・後の刻みの最初の値の補間）。
+    - 描画のために引くときには、後の刻みもほとんど 3 回届いている。それでも補間に使われるのは最初の値（2 刻み先の予測。NDT で直る前）。
+    - 上の図は、最後に届いた値どうしの補間との差が一番大きい点群を挟む 120 ms。blue の 67 ms の点群は、60 ms の最後の値から 80 ms の最初の値（橙、−3.1°）への線の上にあり、
+      80 ms の最終的な値（灰、−6.7°）とは違う。
+  - **視点（Target Frame `base_link`）と TF の表示は、一番新しい刻みの、まだ 1 回しか届いていない値**（今より 20〜40 ms 先の予測）で動く。
+    - その刻みが後で直った値との差は、95 % で数 mm・0.2〜0.3°、最大 10 cm・3.6°。図の緑の白抜きの菱形は橙の四角（最初の値）に重なる。
+  - rviz2 は点群 1 つにつき、同じ stamp で 2 回引く。
+    - 1 回目は tf2_ros の MessageFilter の `waitForTransform`（TF が揃ったときに `tf2_ros::Buffer` が引いて future に入れる。この値は使わない）。
+    - 2 回目は、rviz2 がメインのスレッドで点群を処理するとき（`FrameManager::getTransform`）。この値で描く。
+    - 2 回の間は中央値 1.4〜2.0 ms・最大 11 ms。その間に TF が入った組は約 140 個あり、blue では値が最大 6.7 mm・0.098° 違った。
+    - 1 回目の値だけを見ると、blue の 54 回が再生の後の値と違った（TF がまだ揃っていなかった。最大 7.5 mm・0.29°）。
+  - blue では 40 個の点群が 2 回目を引かれず、描かれなかった。2 回のかたまり（18.8〜19.5 s、42.2〜43.5 s）で、rviz.log の MessageFilter の「queue is full」と時刻が合う。
+  - フックの数え方の都合（tf2 に入れ終わってから記録の番号を増やす）で、その間に引いた回は、引いた後の番号より 1〜3 個先の TF まで入っていたとみると一致した
+    （Gazebo 6 回、blue 62 回）。
+  - 直していないもの：105 と同じ（ekf_localizer の README・`docs/ekf_flow.md`・ノードのコメント、localization_bringup の `docs/node_graph.md` は「置き換わる」のまま）。
+    CLAUDE.md の RViz の項は直した。
+  - 実機の再生はホストの `rmem_max` が 208 kB のままだった（105 と同じ。補間の確認には影響しない）。
+
+![rviz2 の中で引いた ekf_localizer の TF（Gazebo spin5）](dev_log_images/106_rviz_tf_gazebo_spin5.png)
+
+![rviz2 の中で引いた ekf_localizer の TF（実機 blue spin5）](dev_log_images/106_rviz_tf_blue_spin5.png)
