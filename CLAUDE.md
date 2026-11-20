@@ -134,8 +134,8 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 | `calibration/` | パラメータ推定（プログラムと設定 `param/`） |
 | `eval/` | 録画の再生（`replay_outputs.py`）、録画の情報（`bag_info.py`）・置き場所（`bag_paths.py`） |
 | `plot/` | 図（走行の軌跡・MATLAB が `/tf` から引く値・RViz の点群に使う姿勢・CR_debug の組）。`rerender_results.sh` で今のツールで描ける `results/` の図を描き直す |
-| `matlab/` | MATLAB の確認（`replay_matlab.sh` はホストで実行） |
-| `rviz/` | rviz2 が引く TF の確認（`replay_rviz_tf.sh`。`tf_hook.cpp` を `LD_PRELOAD` で rviz2 に入れて tf2 の出し入れを記録する。コンテナの中で実行） |
+| `matlab/` | MATLAB の確認（`replay_matlab.sh`・`replay_cr_debug_rviz.sh` などの `.sh` はホストで実行） |
+| `rviz/` | rviz2 が引く TF の確認（`replay_rviz_tf.sh`。`tf_hook.cpp` を `LD_PRELOAD` で rviz2 に入れて tf2 の出し入れを記録する。コンテナの中で実行）。同じ再生で CR_debug と比べるのは `compare_rviz_cr_debug.py`（`matlab/replay_cr_debug_rviz.sh` が呼ぶ） |
 | `record_rviz.sh` | RViz の画面の録画（ホストで実行、ffmpeg の x11grab） |
 
 ### テスト走行と録画（`drive/`）
@@ -252,6 +252,9 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
     同じ刻みを送り直す扱いを含めて tf2 と同じ値になる（`matlab/replay_tf_interpolation.sh`、`dev_log.md` の 105）。
     `ros2tf` の `sendTransform` は TF の配列を渡しても最初の 1 つしか送らない（`/tf`・`/tf_static` とも。R2024b・R2026a。`dev_log.md` の 104）。複数送るときは 1 つずつ呼ぶ。
   - 点群・Plant とも指定の時刻で引けないと毎回 `warning`（ID `CR_debug:LidarTfFallback`・`CR_debug:PlantTfFallback` は `main.m` の `warning('off','all')` の後でも有効にしてある）。
+  - 同じ再生で rviz2 と比べると（`matlab/replay_cr_debug_rviz.sh`、`dev_log.md` の 107）、点群の stamp で引けた周期の `LIDAR_pose` は rviz2 が描いた値とすべて一致する。
+    違うのは TF が遅れて届いたとき：rviz2 は待ち（溢れた点群は捨てる）、CR_debug は待たずに最新の TF を使う。blue の再生（`rmem_max` 208 kB）では
+    TF が最大 2 s 遅れて届くことがあり、CR_debug は 0.8 s 古い TF を使って点群の stamp の値と最大 0.16 m・48° 違った（遅れの理由は未確認）。
   - sensor(4) は Gazebo の真値 `/wheelchair/pose` を Plant にする（実機で true にするとエラー）。sensor(7)（Localization Debug）・`data.Now`・`LIDAR_new`・`LIDAR_latest_tf`・
     `LIDAR_waiting`・`tform_velodyne`・`data` 直下の `NDT_info` はやめた（新しい点群かは `LIDAR.header.stamp` が前の周期と違うかで、点群の時刻でない TF かは
     `LIDAR_pose.Stamp` が点群の stamp と違うかで分かる）。

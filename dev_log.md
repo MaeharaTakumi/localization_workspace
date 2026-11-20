@@ -2587,3 +2587,56 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 ![rviz2 の中で引いた ekf_localizer の TF（Gazebo spin5）](dev_log_images/106_rviz_tf_gazebo_spin5.png)
 
 ![rviz2 の中で引いた ekf_localizer の TF（実機 blue spin5）](dev_log_images/106_rviz_tf_blue_spin5.png)
+
+## 107（2026-11-20）同じ再生で、CR_debug（MATLAB）と rviz2 が点群の stamp で引く TF を点群ごとに比べる
+
+- 目的：106 で、rviz2 は点群を「前の刻みの最後・後の刻みの最初に届いた値の補間」で描くと分かった。CR_debug の `data.LIDAR_pose` も、
+  走りながら同じ値を得ているかを、同じ再生で点群ごとに確かめる。
+- やったこと：
+  - `matlab/replay_cr_debug_rviz.sh`（ホストで実行）：MATLAB R2024b で `matlab/check_cr_debug.m` を先に起動し、購読ができたら、コンテナで
+    `rviz/replay_rviz_tf.sh`（フックを入れた rviz2 と再生。`ROS_DOMAIN_ID=99`）を動かす。
+  - `check_cr_debug.m` に次を足した：実機の録画（`MODE`・`COLOR`・`SIM_TIME`）、`READY_FILE`・`STOP_IDLE`、`TEST_POSES`。
+    `TEST_POSES` には、周期ごとに `LIDAR_pose`（X〜Yaw・Stamp）と `getSensorData` の前・後の CLOCK_MONOTONIC を書く。
+  - `rviz/compare_rviz_cr_debug.py`：CR_debug の各周期の値を、次の 3 つと比べる。
+    - rviz2 が描いた値（同じ点群の 2 回目）
+    - 再生の後の決まりの値
+    - 最後に届いた値どうしの補間
+  - 点群の stamp で引けずに最新の TF を使った周期は、そのときの tf2 の最新（一番新しい刻みの最後の値）と、点群の stamp の値の両方と比べる。
+  - 時刻は CLOCK_MONOTONIC でそろえる（フックの `steady_clock` と、MATLAB の `java.lang.System.nanoTime`）。
+  - 録画は 105・106 と同じ。ホストの `rmem_max` は 208 kB のまま。
+- 結果：点群の stamp で引けた周期では、CR_debug の値と rviz2 が描いた値がすべて一致した。違いが出たのは、TF が遅れて届いたときだけ（blue）。
+
+  | | Gazebo | blue |
+  |---|---|---|
+  | CR_debug の周期（点群の stamp で引いた周期・点群の数） | 2517（2195・1026） | 1926（1605・1443） |
+  | rviz2 が描いた点群・両方が点群の stamp で引いた点群 | 1039・1026 | 1447・1387 |
+  | 点群の stamp で引いた値：rviz2 が描いた値との差（最大） | 0 m・4.5e-14° | 0 m・4.5e-14° |
+  | 同じく、再生の後の決まりの値との差（最大） | 1.4e-14 m・1.2e-13° | 1.8e-15 m・1.0e-13° |
+  | 同じく、最後に届いた値どうしの補間との差（95 % / 最大） | 2.2e-4 / 0.092 m、0.040 / 2.5° | 7.8e-3 / 0.016 m、0.21 / 0.95° |
+  | 最新の TF を使った周期（起動時の 1 回を除く） | 0 | 19 |
+  | 同じく、点群の stamp の値との差（最大） | — | 0.16 m・48° |
+  | 姿勢の無い周期（起動時。TF が 1 つも無い） | 18 | 6 |
+
+  - 同じ点群を引き直した周期（Gazebo 1169 回、blue 162 回）も一致した。
+    - その点群で最初の周期に CR_debug が引き終えたのは、rviz2 が描くために引いた時刻の中央値 18 ms 後だった。
+  - **TF が遅れて届くと、扱いが違う**（blue）。
+    - rviz2 の tf2 には、TF が 0.3〜2.0 s 届かない間が 5 回あった（3.5、14.1、15.1、65.7、68.2 s）。
+    - 刻みは抜けていない。止まっていた間の刻みは、3 ms ほどの間にまとめて届いた。ekf_localizer は出していて、届くのが遅れた。
+    - rviz2 は TF を待つ。待っている点群が溢れると捨てる（「queue is full」4 回、描かなかった点群 64 個）。届いてから描いた点群は、決まりの値だった。
+    - CR_debug は待たずに最新の TF を使う（警告 `CR_debug:LidarTfFallback`）。
+      - 14.1 s は CR_debug にも TF が届かなかった。0.8 s の間の 17 個の点群に 14.10 s の TF を使った。
+      - その場で回っているので、点群の stamp の値との差は 1 個ずつ増えて、最大 0.16 m・48° になった。
+    - 59.9 s は CR_debug だけ TF が遅れた（rviz2 には 100 ms 先の刻みまで届いていた）。2 個の点群が 1.0°・4.1° 違った。
+    - rviz2 だけ TF が遅れた間（3.5〜4.9、15.1〜16.9、65.8、68.2〜68.9 s）は、CR_debug の方が 39〜1886 ms 早く TF を受け取っていた。
+      その 88 周期の値は正しかった。
+    - 遅れた理由は未確認。次のように推測している。
+      - blue の点群（321 kB）は、ホストの受信バッファ（`rmem_max` 208 kB）より大きい。
+      - そのため、同じソケットで受ける `/tf` のパケットも落ち、reliable の再送を待った。
+      - Gazebo の点群は 155 kB で、遅れは無かった。
+  - 起動時、最初の TF の stamp より前の点群（Gazebo・blue 1 個ずつ）は、そのときの一番新しい刻みの値を使った。
+    これは tf2 の最新（一番新しい刻みの最後に届いた値）と一致した。
+  - rviz2 の側の結果（`summary.txt`）は 106 と同じ。引いた値はすべて tf2 の決まりと一致した。
+
+![同じ再生で CR_debug と rviz2 が点群の stamp で引いた TF（Gazebo spin5）](dev_log_images/107_rviz_cr_debug_gazebo_spin5.png)
+
+![同じ再生で CR_debug と rviz2 が点群の stamp で引いた TF（実機 blue spin5。黄は最新の TF を使った周期）](dev_log_images/107_rviz_cr_debug_blue_spin5.png)
