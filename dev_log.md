@@ -2823,3 +2823,14 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   `LiDAR_age` の縦軸のラベルは長く、図の上端で少し切れる（今までの図も同じ）。
 
 ![左上が computation_Time、上段右 2 つが EKF ありの fitness_score と ndt_fitness_score、下段は EKF なしの fitness_score・LiDAR_age・Position](dev_log_images/myplot_font_soken.png)
+
+## 118（2026-11-27）myplotResult の長い縦軸のラベルを短くする
+
+- 目的（ユーザー指示）：117 で文字を大きくしたら、`LiDAR_age` の縦軸のラベルが図の上端で切れたので短くする。同じく上端に届いていた
+  `LiDAR_pair_interval`・`ndt_angle_diff` も短くした。
+- やったこと（whill_common_matlab `cr_debug` の `+plotter/myplotResult.m`）：`Plant TF stamp - point cloud stamp [ms]` → `Point cloud age [ms]`、
+  `Interval between new LiDAR pairs [ms]` → `New pair interval [ms]`、`Rotation magnitude difference [deg]` → `Angle [deg]`（凡例は Rotation magnitude difference のまま）。
+  2 つのフォルダ（116）に写して描き直した。
+- 結果：3 つとも図の中に収まった（上段が EKF あり、下段が EKF なし）。
+
+![左から LiDAR_age・LiDAR_pair_interval・ndt_angle_diff](dev_log_images/myplot_short_labels_soken.png)
