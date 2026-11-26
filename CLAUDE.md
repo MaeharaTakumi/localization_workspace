@@ -277,8 +277,13 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   - sensor(4) は Gazebo の真値 `/wheelchair/pose` を Plant にする（実機で true にするとエラー）。sensor(7)（Localization Debug）・`data.Now`・`LIDAR_new`・`LIDAR_latest_tf`・
     `LIDAR_waiting`・`tform_velodyne`・`data` 直下の `NDT_info` はやめた（新しい点群かは `LIDAR.header.stamp` が前の周期と違うかで、点群の時刻でない TF かは
     `LIDAR_pose.Stamp` が点群の stamp と違うかで分かる）。
-  - 図は `+plotter/myplotResult.m`（点群の古さは `Plant.Stamp` − 点群の stamp）、動画は `+plotter/myplotPointCloudVideo.m`、
-    再生から図・動画までは localization_tools の `matlab/replay_matlab.sh`（`dev_log.md` の 61〜68・75・78・79・95・96・99・109・110）。
+  - 図は `+plotter/myplotResult.m(DATAdir, cfg, MAPfile)`（点群の古さは `Plant.Stamp` − 点群の stamp。angle_diff の図の名前は Rotation magnitude difference）、
+    動画は `+plotter/myplotPointCloudVideo.m`（凡例にカッコの補足は付けない）、再生から図・動画までは localization_tools の `matlab/replay_matlab.sh`
+    （`dev_log.md` の 61〜68・75・78・79・95・96・99・109・110・116）。
+  - **フィットネススコア**（`fitness_score`。2026-11-27、ユーザー指示。`dev_log.md` の 116）：`myplotResult` に地図（`MAPfile`）を渡したときだけ描く（省く・空ならスキップ）。
+    MATLAB が受け取った点群と `LIDAR_pose` の組（新しい点群の周期）で、点群を地図に重ねた各点から地図の最近傍点までの距離の二乗の平均 [m²]
+    （PCL の `getFitnessScore` と同じ。点群は NDT と同じく 0.1 m のボクセル・水平距離 0.1〜100 m、地図は間引かない）。最新の TF を使った組は点で示す。
+    `main.m` は `mapFile` を渡す。実験データのフォルダに写すときは `myplotResult.m`・`myplotPointCloudVideo.m` をそのフォルダに置く。
 - **ekf_localizer**（`src/ekf_core.cpp` など）：
   - ファイル：ROS 非依存のライブラリ `ekf_core`（`pose_utils`・`ekf_core`・`observation_model`・`ndt_model`・`odom_model`・`lagged_ekf`・`tf_grid`）と、
     ノード（`ekf_params`：パラメータ `EkfParams`、`ekf_filter`：組み立て `createFilter`、`ekf_localizer_node`）。コードの既定値は構造体の初期値だけ。

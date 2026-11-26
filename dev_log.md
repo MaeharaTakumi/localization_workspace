@@ -2776,3 +2776,35 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - 今までの走行（`spin`）の Ctrl-C は、録画が止まり、ログに「止めた：Ctrl-C」が残るようになった。
 - `test` への反映（`sync.sh push`）はまだ。ホストの `libnvidia-egl-wayland` が 1.1.24 になり、コンテナは 1.1.23 を探して起動できない
   （ホストでのリンク作成が要る。sudo）。図は無し。
+
+## 116（2026-11-27）MATLAB の図にフィットネススコアを足す・動画の凡例・angle_diff の図の名前
+
+- 目的（ユーザー指示）：CR_debug の図（`myplotResult`）にフィットネススコアの推移を足す（地図を引数で渡さなければスキップ）。動画の凡例のカッコの補足をやめる。
+  angle_diff の図の名前を中身に合わせる。実験データ 20261126 の総研の 2 つ（EKF あり・なし。地図 `soken_20261119-163430.pcd`）に図のプログラムを写して描く。
+- ユーザーに確認したこと：no_ekf は `20261126_195537_soken_benchmark_no_ekf`（指定の `200148_..._no_ekf` は無い）。フィットネススコアは MATLAB が
+  受け取った点群と LiDAR の姿勢の組から計算する（NDT が送った score は描かない）。angle_diff は値を変えず図の名前だけ変える。
+- やったこと：
+  - whill_common_matlab（`cr_debug`）`+plotter/myplotResult.m`：引数 `MAPfile` を足した（省く・空ならスキップ、無いファイルなら警告してスキップ）。
+    新しい点群の周期の点群と `LIDAR_pose` の組で、点群を地図に重ねた各点から地図の最近傍点までの距離の二乗の平均 [m²]（PCL の `getFitnessScore` と同じ。
+    点群は pcl_localization と同じく 0.1 m のボクセル（`pcdownsample` の gridAverage）・水平距離 0.1〜100 m、地図は間引かない。`KDTreeSearcher`）を
+    `fitness_score` に描く。点群の stamp の TF が引けず最新の TF を使った組は点（`Latest TF used`）。
+    angle_diff の図は `Rotation magnitude difference`（初期値と NDT の解のそれぞれの回転の大きさの差。2 つの姿勢の間の角度ではない。ファイル名は `ndt_angle_diff` のまま）。
+  - `+plotter/myplotPointCloudVideo.m`：凡例を Map・Scan・Trajectory・Vehicle center・Heading・LiDAR にした（カッコの補足をやめた）。
+  - `main.m`：`myplotResult(Datadir,cfg,mapFile)`。localization_tools の `matlab/check_cr_debug_plot.m` も `MAP` を渡す。
+  - 2 つのフォルダに `myplotResult.m`・`myplotPointCloudVideo.m` を写し（10-16 の実験データと同じ置き方）、R2026a の `-batch` で
+    `myplotResult(pwd, [], 'map/soken_20261119-163430.pcd')`・`myplotPointCloudVideo(pwd, 同じ地図)` を実行した（`result/` の図と動画を上書き）。
+- 結果：
+  - 地図を渡さないと `no map, fitness score skipped` と出て、ほかの図は今までどおり描けた。
+  - 間引いた点数は MATLAB 8687〜8924、NDT の `downsampled_points` 8749〜8848（始めの 5 周期。NDT_info は最新のものなので同じ点群とは限らない）。
+
+  | 記録 | 組 | 最新の TF を使った組 | フィットネススコア 平均・中央値・最大 [m²] | 点群の stamp の TF の組 / 最新の TF の組の平均 | NDT が送った score の平均 |
+  |---|---|---|---|---|---|
+  | EKF あり（200148） | 407 | 0 | 0.0231・0.0228・0.0482 | 0.0231 / — | 0.0229 |
+  | EKF なし（195537） | 360 | 184（51 %） | 0.0295・0.0270・0.0704 | 0.0244 / 0.0343 | 0.0237 |
+
+  - EKF ありは MATLAB の姿勢での値が NDT の解での値とほぼ同じ。EKF なしは半分の組で点群の時刻の TF がまだ無く（その点群の NDT の解は点群を
+    受け取った後に出る）、一つ前の NDT の解を使うので、走行中に大きくなる。
+
+![EKF あり](dev_log_images/fitness_score_soken_ekf.jpg)
+![EKF なし](dev_log_images/fitness_score_soken_no_ekf.jpg)
+![動画の凡例（EKF あり、10 s）](dev_log_images/video_legend_soken_ekf.png)
