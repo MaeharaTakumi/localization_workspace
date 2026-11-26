@@ -2747,3 +2747,13 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 
   - `auto` を NDT とオドメトリの両方にした回は、それぞれの数がログに出た。
   - コンテナ `test` の `ros2_ws` への反映（`deploy.sh`）はしていない（推定を起動中）。録画の再生での `stamp` と `receipt` の比較はしていない。図は無し。
+
+## 114（2026-11-26）112・113 をコンテナ test に反映する
+
+- 目的：起動中の推定を止めて、`ekf_localizer`・`localization_bringup` の変更を `test` に反映する（ユーザー指示）。
+- やったこと：
+  - 起動していた `localization.launch.py env:=gazebo` を SIGINT で止めた（NDT・EKF・RViz とも終了を確かめた）。
+  - コンテナだけの編集がある `param/gazebo/{lidarslam,pcl_localization}.yaml`（111）を退避し、`./deploy.sh --test ekf_localizer localization_bringup` のあと戻した。
+  - `rviz:=false` で短く起動して確かめ、止めた。
+- 結果：ビルドと gtest 45 件は通過。2 つの yaml の差分は退避したものと一致した（install はシンボリックリンクなので戻した内容が使われる）。
+  起動ログと `ros2 param get` で `ndt_stamp_mode` は `stamp`、EKF は NDT で初期化して `/ekf_odom` を出した。推定は止めたまま。図は無し。
