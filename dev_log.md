@@ -2757,3 +2757,22 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - `rviz:=false` で短く起動して確かめ、止めた。
 - 結果：ビルドと gtest 45 件は通過。2 つの yaml の差分は退避したものと一致した（install はシンボリックリンクなので戻した内容が使われる）。
   起動ログと `ros2 param get` で `ndt_stamp_mode` は `stamp`、EKF は NDT で初期化して `/ekf_odom` を出した。推定は止めたまま。図は無し。
+
+## 115（2026-11-26）drive に速度指令を送らない manual を追加
+
+- 目的：実機を手で動かしながら録画だけできるようにする（ユーザー指示）。これまでの `drive` は必ず速度指令を送り、ジョイスティックを倒すと中断した。
+- ユーザーに確認したこと：実機用。自己位置推定が動いていなくても、表示して録画を続ける。
+- やったこと：
+  - `drive/drive_test.py`：動き `manual` を追加（`profiles.yaml` には書かない）。指令の publisher を作らず、Enter か Ctrl-C（SIGTERM）まで待つ。
+    始めに姿勢（`/tf` の map → base）の有無と、publish するノードが無い録画のトピックを表示する。`_phases.txt` は `manual` と `stop`。`--list` にも出す。
+  - `drive/run_test.sh`：`gazebo manual` は実行しない。実機の `tee` を `tee -i` にした（今までは Ctrl-C で `tee` が先に終わり、
+    「止めた：Ctrl-C」が表示にもログにも残らなかった。録画の停止はできていた）。
+- 結果（`test` は NVIDIA ドライバの更新で起動できないので、同じイメージのネットワークを切った使い捨てコンテナで、blue のトピックと `/tf` を
+  合成して確かめた。実機では未確認）：
+  - ホストから・コンテナの中からの Enter と Ctrl-C のどれでも、終了コード 0 で録画が止まり、`_phases.txt`・`_drive.log`・`_info.yaml` が残った。
+    `cmd_vel` は publisher 0、受けた数 0。
+  - `/tf` が無いときは「届いていない（録画は続ける）」、何も publish していないときも録画して終わる（0 件の録画は一覧の日時が 2262 年になる）。
+  - `gazebo manual` と、同じ bag 名は止まる。bag 名を省くと `blue_manual_<日時>`。`plot_drive_paths.py`・`bags_list`・`drive_list blue manual` も使えた。
+  - 今までの走行（`spin`）の Ctrl-C は、録画が止まり、ログに「止めた：Ctrl-C」が残るようになった。
+- `test` への反映（`sync.sh push`）はまだ。ホストの `libnvidia-egl-wayland` が 1.1.24 になり、コンテナは 1.1.23 を探して起動できない
+  （ホストでのリンク作成が要る。sudo）。図は無し。

@@ -160,6 +160,9 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   今の時刻以下で最も新しいもの。`dev_log.md` の 93）。`CONFIG=real_in_gazebo` で実機の設定を Gazebo で試す。
 - 走る前に計画（計算した軌跡）を表示する。実機は Enter で走り出す（何か入力して Enter なら取りやめ）。走ってよい範囲の確認はしない（`dev_log.md` の 77）。
   走行中は姿勢が 0.5 s 来ない（壁時計）・ジョイスティック・時計の停止・区間 60 s・Ctrl-C/SIGTERM で 0 を送って止める（rclpy に Ctrl-C を処理させない）。
+- `drive <red|blue|white> manual [<bag 名>]`（実機用。2026-11-26、ユーザー指示。`dev_log.md` の 115）：速度指令を送らず録画だけする（手で動かし、Enter か
+  Ctrl-C で終える）。推定が動いていなくても録画する（姿勢が届いているか・publish するノードが無いトピックを表示するだけ）。`profiles.yaml` の動きではなく
+  `drive_test.py` が持つ。走る前の確認・計画・ジョイスティックの監視は無い。`gazebo manual` は実行しない。
 - 録画は `/root/ros2_ws/bags/<gazebo|real>/<bag 名>` と `_phases.txt`（動作の開始時刻）・`_drive.log`・`_info.yaml`（`eval/bag_info.py`。途中で止めたら理由も）。
   一覧は `bags_list [gazebo|real]`。2026-10-13 より前の Gazebo の録画は旧版の動き（大きさが違う）。
 
