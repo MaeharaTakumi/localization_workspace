@@ -2808,3 +2808,18 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
 ![EKF あり](dev_log_images/fitness_score_soken_ekf.jpg)
 ![EKF なし](dev_log_images/fitness_score_soken_no_ekf.jpg)
 ![動画の凡例（EKF あり、10 s）](dev_log_images/video_legend_soken_ekf.png)
+
+## 117（2026-11-27）myplotResult の文字を computation_Time にそろえ、NDT のフィットネススコアを別の図にする
+
+- 目的（ユーザー指示）：116 で描き直した図の文字が小さすぎるので、computation_Time（DataPlotter）に大きさを合わせる。NDT のフィットネススコアも別に出す。
+- 原因：`myplotResult` は図の大きさと文字を MATLAB の既定のまま描いていた。`main.m` では先に DataPlotter が既定（groot）の文字を 17 pt・LaTeX にするので
+  computation_Time と近かったが、116 では DataPlotter を通さずに `-batch` で描いたので、既定の図が 14.7 × 8.8 in（jpeg 2202 × 1327）と大きく、文字は 10 pt だった。
+- やったこと（whill_common_matlab `cr_debug` の `+plotter/myplotResult.m`）：
+  - `newFigure`：図を 560 × 420 px 相当（5.83 × 4.38 in。jpeg 875 × 657）、目盛 16 pt（軸ラベル・題は 17.6 pt）、LaTeX（図ごとの既定）。
+    `saveFigure` で凡例を 13 pt。どれも DataPlotter の `setFigure`（computation_Time）と同じ値で、DataPlotter を通さなくても同じになる。
+  - NDT が送った score（`NDT_info.score`、NDT の解での値）を `ndt_fitness_score` に描く（`ndt_matching_time` と同じく NDT_info のある周期。地図は要らない）。
+  - 2 つのフォルダ（116）に写し、`myplotResult(pwd, [], 'map/soken_20261119-163430.pcd')` で描き直した（動画はそのまま）。
+- 結果：図はすべて 875 × 657。LaTeX の警告は出なかった。NDT の score の平均は EKF あり 0.0229、EKF なし 0.0237 m²（116 と同じ）。
+  `LiDAR_age` の縦軸のラベルは長く、図の上端で少し切れる（今までの図も同じ）。
+
+![左上が computation_Time、上段右 2 つが EKF ありの fitness_score と ndt_fitness_score、下段は EKF なしの fitness_score・LiDAR_age・Position](dev_log_images/myplot_font_soken.png)
