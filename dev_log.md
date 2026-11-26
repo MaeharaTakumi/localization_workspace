@@ -2710,3 +2710,14 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
     反映の後に `git fetch` と `git reset origin/main` で GitHub の main に合わせた。
 - 結果：コンテナの `localization_tools` は 1cfa413 でステージ・変更とも 0。`replay_matlab.sh` は引数なしで実行すると使い方が出る（再生はしていない）。
   `localization_bringup` の `param/gazebo/` の yaml 2 つはコンテナだけの編集があり、そのまま残した。図は無し。
+
+## 112（2026-11-26）TF の送り直しの説明と、オドメトリのノイズの既定値の記述を直す
+
+- 目的：105・106 で「直していないもの」だった「同じ刻みは置き換わる」の記述と、100・101 の後も古いままだった CLAUDE.md の既定値を直す（ユーザー指示）。
+- やったこと：
+  - TF の送り直し：「tf2・`ros2tf` は同じ stamp を置き換えずに重ねて持ち、刻みの間は前の刻みの最後に届いた値と後の刻みの最初に届いた値の補間」に直した。
+    - `ekf_localizer`：`README.md`・`docs/ekf_flow.md`、`tf_grid.hpp`・`ekf_localizer_node.hpp`・`ekf_localizer_node.cpp` のコメント。
+    - `localization_bringup`：`docs/node_graph.md`、`param/{gazebo,blue,red,white}/ekf_localizer.yaml` のコメント。
+  - CLAUDE.md のノイズの既定値：`R_odom` を [1e-8, 1e-8]、`odom_noise_alpha` を [1e-6, 1e-3, 1e-6, 1e-3] にし、blue の値なのは Q・P_init・R_ndt だけにした。
+- 結果：コメントを除いた C++ 3 ファイルと、読み込んだ yaml 4 つの値は、変更前と同じ。推定を起動中だったので、コンテナ `test` への反映（`deploy.sh`）・ビルドはしていない。
+  コンテナの `localization_bringup` の `param/gazebo/{lidarslam,pcl_localization}.yaml` にはコンテナだけの編集（111）がある。図は無し。

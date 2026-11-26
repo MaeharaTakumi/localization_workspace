@@ -291,8 +291,9 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
     `odom_noise_alpha`・`odom_noise_tau`）。v・omega には先に `odom_scale` を掛ける。メッセージの共分散は使わない。遅れの補正は `odom_delay`・`ndt_delay`（stamp から引く）。
   - NDT の観測の時刻はメッセージの stamp、オドメトリは `odom_stamp_mode`。遅れて届く NDT は `LaggedEkf` が巻き戻して入れ直す（`history_length` 1 s）。
   - トピックは `ndt_pose`・`odom`・`initialpose`（変えるときは remap。`*_topic` パラメータは 2026-11-11 にやめた）。
-  - **ノイズの既定値（コード。`param/<env>/ekf_localizer.yaml` にも全項目）は実機 blue の値**：Q `[0.05, 0.05, 0.005, 0.05, 0.05, 0.05, 0.05, 0, 0.1, 0.1, 10]`、P_init `[0.2, 0.2, 0.2, 0.01, 0.01, 0.01, 0.01, 0, 0.01, 0.01, 0.01]`、
-    R_ndt `[2.08e-4, 1.55e-4, 9.61e-5, 5.89e-5, 6.32e-5, 1.23e-5]`、R_odom `[6.08e-3, 9.92e-4]`、alpha・tau 0（`dev_log.md` の 76・80・82）。
+  - **ノイズの既定値（コード。`param/<env>/ekf_localizer.yaml` にも全項目）**：Q・P_init・R_ndt は実機 blue の値で、Q `[0.05, 0.05, 0.005, 0.05, 0.05, 0.05, 0.05, 0, 0.1, 0.1, 10]`、P_init `[0.2, 0.2, 0.2, 0.01, 0.01, 0.01, 0.01, 0, 0.01, 0.01, 0.01]`、
+    R_ndt `[2.08e-4, 1.55e-4, 9.61e-5, 5.89e-5, 6.32e-5, 1.23e-5]`（`dev_log.md` の 76・80・82）。オドメトリは指定の値で、R_odom `[1e-8, 1e-8]`、
+    `odom_noise_alpha` `[1e-6, 1e-3, 1e-6, 1e-3]`、`odom_noise_tau` 0（4 環境とも同じ。`dev_log.md` の 100・101）。
     コードの既定と環境で違うのは `tf_future_steps`・`tf_past_steps`（コード 0・0、環境 2・1）、`odom_scale`（コード [1, 1]）、Gazebo の `base_frame_id`。
     ノイズは red・white・blue がこの値、Gazebo は Q の速度 3 つを 0 にしている（P_init・R_ndt は既定のまま。
     82 の再生で Gazebo は悪くなった）。実機の omega_roll・omega_pitch 0.1 の改善が傾きの動きか NDT の誤差を追っただけかは、真値が無いので分からない。
