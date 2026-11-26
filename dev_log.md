@@ -2721,3 +2721,29 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - CLAUDE.md のノイズの既定値：`R_odom` を [1e-8, 1e-8]、`odom_noise_alpha` を [1e-6, 1e-3, 1e-6, 1e-3] にし、blue の値なのは Q・P_init・R_ndt だけにした。
 - 結果：コメントを除いた C++ 3 ファイルと、読み込んだ yaml 4 つの値は、変更前と同じ。推定を起動中だったので、コンテナ `test` への反映（`deploy.sh`）・ビルドはしていない。
   コンテナの `localization_bringup` の `param/gazebo/{lidarslam,pcl_localization}.yaml` にはコンテナだけの編集（111）がある。図は無し。
+
+## 113（2026-11-26）ekf_localizer に ndt_stamp_mode を足す（NDT の観測の時刻を stamp か受け取った時刻から選ぶ）
+
+- 目的：NDT の観測の時刻に、EKF が `/ndt_pose` を受け取った時刻を使えるようにし、stamp との比較対象にする（ユーザー指示。普段は使わない（20）という方針は変えない）。
+- やったこと：
+  - `ekf_localizer`：`ndt_stamp_mode`（`stamp` 既定 / `receipt` / `auto`）と `ndt_stamp_auto_threshold`（0.1 s）を足した。意味は `odom_stamp_mode` と同じで、
+    選んだ時刻から `ndt_delay` を引く。時刻の選択は `selectStamp` にまとめ、オドメトリと共通にした。
+    `auto` の 10 s ごとのログは観測の種類ごとに出す（`RCLCPP_INFO_THROTTLE` は呼び出し箇所で間隔を共有するので、自前で間隔を測る。始めの 1 回はすぐ出る）。
+  - `localization_bringup`：4 環境の `ekf_localizer.yaml` に 2 項目を足した（`stamp`・0.1）。README・`docs/node_graph.md` を直した。
+- 結果：
+  - 起動中の推定に触れないよう、コンテナの別の作業場所でビルドした。gtest 45 件すべて通過。
+  - `ROS_DOMAIN_ID=99` で、v = 1 m/s の直進を合成し、NDT の解を lag 秒遅れ（stamp は点群の時刻）で送った（一度きりの確認なのでスクリプトは残していない）。
+    推定の x と真の x の差は直近 2 s の平均。
+
+  | `ndt_stamp_mode` | lag [s] | x の差 [m] | ログ |
+  |---|---|---|---|
+  | `stamp` | 0.3 | 0.0000 | |
+  | `receipt` | 0.3 | −0.3007（−v·lag） | |
+  | `auto` | 0.3 | −0.3005 | NDT の 95 / 95 で受け取った時刻（12.5 s の回） |
+  | `auto` | 0.03 | 0.0000 | ログ（始めの 1 回）は受け取った時刻 0 / 1 |
+  | `stamp` | 2.0 | −0.87 | `older than the history` の WARN（`history_length` 1 s を超える） |
+  | `receipt` | 2.0 | −2.0004 | WARN なし |
+  | `wrong`（不正な値） | 0.3 | 0.0000 | WARN を出して `stamp` |
+
+  - `auto` を NDT とオドメトリの両方にした回は、それぞれの数がログに出た。
+  - コンテナ `test` の `ros2_ws` への反映（`deploy.sh`）はしていない（推定を起動中）。録画の再生での `stamp` と `receipt` の比較はしていない。図は無し。

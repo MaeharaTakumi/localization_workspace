@@ -208,7 +208,7 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 ```
 点群 ─▶ pcl_localization (NDT) ─▶ /ndt_pose ─▶ ekf_localizer ◀─ /wheelchair/odom ◀─ whill_odometry（実機）・Gazebo
         （SLAM のときは scan_matcher ─▶ /slam_pose。/map_array ─▶ graph_based_slam）
-              ▲                                      │  （倍率 odom_scale・時刻 odom_stamp_mode は EKF）
+              ▲                                      │  （倍率 odom_scale・時刻 ndt_stamp_mode・odom_stamp_mode は EKF）
               └── TF map→LiDAR（点群の時刻）◀────────┘ /tf map→base（50 Hz）, /ekf_pose, /ekf_odom
 ```
 
@@ -234,9 +234,10 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   `/current_pose` は scan_matcher のもとの PoseStamped（MATLAB CR の sensor 4 の型）。
   - 古い形（`param/env/<名前>.yaml`、`odom_relay`・`odom_covariance`・`joint_state_odometry`、env の `topics`・`parameters`・`stamp_mode`）はやめた。
 - **時刻**（`stamp`・`receipt`・`auto`。auto は |受け取った時刻 − stamp| が閾値以上なら受け取った時刻）：点群は NDT の `stamp_mode`・`stamp_auto_threshold`
-  （`/ndt_pose` の stamp と初期値の TF を引く時刻。点群のトピック自体の stamp は変えない。EKF は `/ndt_pose` の stamp を使う。`/ndt_pose` の受信時刻は
-  NDT の計算の遅れを含むので使わない（ユーザー指示。`dev_log.md` の 20））、オドメトリは ekf_localizer の `odom_stamp_mode`・`odom_stamp_auto_threshold`
-  （EKF が受け取った時刻）。sim time で `/clock` を受け取る前は stamp のまま。今は実機・Gazebo とも `stamp`。
+  （`/ndt_pose` の stamp と初期値の TF を引く時刻。点群のトピック自体の stamp は変えない）、NDT の解は ekf_localizer の `ndt_stamp_mode`・
+  `ndt_stamp_auto_threshold`、オドメトリは `odom_stamp_mode`・`odom_stamp_auto_threshold`（どちらも EKF が受け取った時刻）。sim time で `/clock` を
+  受け取る前は stamp のまま。今は実機・Gazebo ともすべて `stamp`。**EKF は通常 `/ndt_pose` の stamp を使う**：`/ndt_pose` の受信時刻は NDT の計算の
+  遅れを含むので普段は使わない（ユーザー指示。`dev_log.md` の 20）。`ndt_stamp_mode: receipt`・`auto` は比較用（2026-11-26、ユーザー指示。113）。
 - **NDT（SLAM では scan_matcher）と EKF は TF で循環している**：`use_ekf:=true` のとき NDT は `use_tf_init_guess: true` で、**点群の stamp** の map→LiDAR を
   TF から引いて初期値にする（`tf_init_guess_timeout` 0.05 s。引けないとき（EKF の初期化前、`/initialpose` から 1 秒間）は前回の解）。
 - **`/ndt_pose`**：map→**LiDAR**、stamp は点群の取得時刻、共分散は未設定（0）。**`/initialpose`** も NDT は LiDAR の姿勢として扱う（RViz の 2D Pose Estimate は z=0）。
@@ -288,8 +289,8 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   - **NDT の観測**（`src/ndt_model.cpp`）：LiDAR の姿勢を取付で base の姿勢 T_L·T_BL⁻¹ に直し、`R_ndt`（LiDAR、対角）をヤコビアンで伝播した相関込みの
     6×6 で 6 成分を 1 回で更新する。ゲートは `ndt_gate`（既定 1e5 で実質無効。テストは 16.81）。`/ekf_pose` の共分散は `lidarPoseJacobian`。
   - **オドメトリの観測**：`R_v = R0 + a0·v² + a1·ω² + (τ0·dv/dt)²`、`R_ω = R0 + a2·v² + a3·ω² + (τ1·dω/dt)²`（`OdomNoise`。`R_odom`・
-    `odom_noise_alpha`・`odom_noise_tau`）。v・omega には先に `odom_scale` を掛ける。メッセージの共分散は使わない。遅れの補正は `odom_delay`・`ndt_delay`（stamp から引く）。
-  - NDT の観測の時刻はメッセージの stamp、オドメトリは `odom_stamp_mode`。遅れて届く NDT は `LaggedEkf` が巻き戻して入れ直す（`history_length` 1 s）。
+    `odom_noise_alpha`・`odom_noise_tau`）。v・omega には先に `odom_scale` を掛ける。メッセージの共分散は使わない。遅れの補正は `odom_delay`・`ndt_delay`（選んだ時刻から引く）。
+  - 観測の時刻は NDT が `ndt_stamp_mode`、オドメトリが `odom_stamp_mode`（既定はどちらも stamp）。遅れて届く NDT は `LaggedEkf` が巻き戻して入れ直す（`history_length` 1 s）。
   - トピックは `ndt_pose`・`odom`・`initialpose`（変えるときは remap。`*_topic` パラメータは 2026-11-11 にやめた）。
   - **ノイズの既定値（コード。`param/<env>/ekf_localizer.yaml` にも全項目）**：Q・P_init・R_ndt は実機 blue の値で、Q `[0.05, 0.05, 0.005, 0.05, 0.05, 0.05, 0.05, 0, 0.1, 0.1, 10]`、P_init `[0.2, 0.2, 0.2, 0.01, 0.01, 0.01, 0.01, 0, 0.01, 0.01, 0.01]`、
     R_ndt `[2.08e-4, 1.55e-4, 9.61e-5, 5.89e-5, 6.32e-5, 1.23e-5]`（`dev_log.md` の 76・80・82）。オドメトリは指定の値で、R_odom `[1e-8, 1e-8]`、
