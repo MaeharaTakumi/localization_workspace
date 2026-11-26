@@ -51,12 +51,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `whill_odometry` | humble | 同じ | 実機の車輪オドメトリ |
 | `localization_tools` | main | （ROS のパッケージではない） | 検証・調整・描画・テスト走行・パラメータ推定 |
 | `whill_common_matlab-main _ndtDebug` | `cr_debug` | — | MATLAB（下記） |
+| `whill_common_matlab-main _sip` | `cr_debug_sip` | — | MATLAB の SIP 版（下記） |
 
 - `rviz2_bag` は外部のリポジトリ。
 - **MATLAB**（`src/whill_common_matlab-main _ndtDebug`）：`acsl-tcu/whill_common_matlab` のフォーク `MaeharaTakumi/whill_common_matlab`
   （`origin` がフォーク、`upstream` が元）のブランチ `cr_debug`。フォルダ名に空白があるので `repos.yaml` には入れていない。
   CRLF・実行権付きの .m があるので、このフォルダの `.git` だけ `core.fileMode false` と `.git/info/attributes` の `* -text`。
-  ホストの MATLAB R2026a（ROS Toolbox）は `-batch` で動かせる（MATLAB の MCP はつながらないことがある）。
+  ホストの MATLAB R2026a（ROS Toolbox）は `-batch` で動かせる（MATLAB の MCP はつながらないことがある）。R2024b もある。
+- **MATLAB の SIP 版**（`src/whill_common_matlab-main _sip`。2026-11-23、ユーザー指示。`dev_log.md` の 109）：同じフォークのブランチ `cr_debug_sip`
+  （`cr_debug` から分けた。`.git` の設定は `_ndtDebug` と同じ）。WheelchairSIP（`/home/student/Documents/Research/Project-SIP/main`、
+  `acsl-tcu/WheelchairSIP`）の推定器（`+estimator/@Estimate2`：A* の経路・障害物認識）・制御器（`+controller/@Control3`：MCMPC）・図
+  （`myPlotter/myplotResult`）と、それらが使う `+mcmpc2`・`+tracker`・`+GridMap`・`config.m`・`RealTimePlotter` を写し、車両の姿勢を
+  CR_debug の `/tf`（`Plant` = map → base、障害物の点群は `LIDAR_pose`。高さは取付の z）から引く。WheelchairSIP 自体は編集しない。
+  `+tracker` の MEX は R2024b で作ったもの。確認は localization_tools の `matlab/check_sip.m`（README の「SIP 版」）。
 - `robot_localization` ブランチ（localization_bringup の 23767ee）は廃止した robot_localization の版（`dev_log.md` の 1〜23）。
 
 ## コンテナ
@@ -135,7 +142,7 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
 | `calibration/` | パラメータ推定（プログラムと設定 `param/`） |
 | `eval/` | 録画の再生（`replay_outputs.py`）、録画の情報（`bag_info.py`）・置き場所（`bag_paths.py`） |
 | `plot/` | 図（走行の軌跡・MATLAB が `/tf` から引く値・RViz の点群に使う姿勢・CR_debug の組）。`rerender_results.sh` で今のツールで描ける `results/` の図を描き直す |
-| `matlab/` | MATLAB の確認（`replay_matlab.sh`・`replay_cr_debug_rviz.sh` などの `.sh` はホストで実行） |
+| `matlab/` | MATLAB の確認（`replay_matlab.sh`・`replay_cr_debug_rviz.sh` などの `.sh` はホストで実行）。SIP 版は `check_sip.m`（`replay_matlab.sh` に `CHECK=check_sip.m`） |
 | `rviz/` | rviz2 が引く TF の確認（`replay_rviz_tf.sh`。`tf_hook.cpp` を `LD_PRELOAD` で rviz2 に入れて tf2 の出し入れを記録する。コンテナの中で実行）。同じ再生で CR_debug と比べるのは `compare_rviz_cr_debug.py`（`matlab/replay_cr_debug_rviz.sh` が呼ぶ） |
 | `record_rviz.sh` | RViz の画面の録画（ホストで実行、ffmpeg の x11grab） |
 
@@ -243,16 +250,19 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   RViz は `/tf` をそのまま読む（既定の視点は `TopDownOrtho`）。点群は受け取ったときに 1 回だけ点群の stamp で引いた姿勢で描く（前の刻みの最後・後の刻みの最初の値の補間。再生の後に MATLAB で引いた値と同じ）。視点の Target Frame `base_link` と TF の表示は毎描画、最新（時刻 0）で引くので、一番新しい刻み（今より 20〜40 ms 先の予測。まだ 1 回しか届いていない値）になる（`dev_log.md` の 106）。
   RViz2 は設定ファイルの `Hide Left Dock` などを起動時に効かせない（`dev_log.md` の 53〜57・69・70）。
 - **MATLAB**（CR_debug。2026-11-19 から、`dev_log.md` の 99）：sensor(1) で `/velodyne_points` を購読し、最新の点群を毎周期 `data.LIDAR` に入れる（TF が無くても渡す）。
-  sensor(5)（Matching）は `/localization_debug` を購読し、`ros2tf`（既定 10 s 溜める）から毎周期引き直す（前の周期の値は持ち越さない）：
-  - `Plant`：今の ROS の時刻の map → base（引けなければ最新。base は Gazebo `base_footprint`、実機 `base_link`）。使った TF の stamp は `Plant.Stamp` [s]。
-  - `data.LIDAR_pose`：点群の stamp の map → velodyne（事前推定値。NDT の初期値と同じ値）。今の時刻と点群の stamp の差が `lidarStampThreshold`（既定 0.2 s）以上なら
-    今の時刻の TF（どちらも引けなければ最新。TF が 1 つも無ければ `[]`）。フィールドは X, Y, Z, Roll, Pitch, Yaw、`Stamp`（使った TF の stamp [s]）、
+  sensor(5)（Matching）は `/localization_debug` を購読し、`ros2tf`（既定 10 s 溜める）から毎周期引き直す（前の周期の値は持ち越さない）。
+  引き方は `main.m` の `getNewTf`（`cfg.getNewTf`、既定 false。2026-11-26、ユーザー指示）：
+  - `Plant`：**最新**の map → base（getNewTf によらない。一番新しい刻み＝今より 20〜40 ms 先の予測。base は Gazebo `base_footprint`、実機 `base_link`）。
+    使った TF の stamp は `Plant.Stamp` [s]（図の点群の古さ `LiDAR_age` もこれを基準にするので、先読みの分だけ大きく出る）。
+  - `data.LIDAR_pose`：getNewTf が false なら点群の stamp の map → velodyne（事前推定値。NDT の初期値と同じ値。時間のしきい値は無く、引けなければ最新）、
+    true なら最新の map → velodyne（`Stamp` が `Plant.Stamp` と同じ）。TF が 1 つも無ければ `[]`。フィールドは X, Y, Z, Roll, Pitch, Yaw、`Stamp`（使った TF の stamp [s]）、
     `tform`（取付 base → velodyne。`/tf_static` を引いた `rigidtform3d`。引けなければ `[]`）、`NDT_info`（`/localization_debug` の最新。stamp が無いのでこの点群の結果とは限らない。無ければ `[]`）。
   - 時刻を指定した `getTransform` は前後の TF の補間（位置は線形、回転は最短経路の slerp）。区間の外は外挿せず `canTransform` が false
     （R2024b で確認。localization_tools の `matlab/check_tf_interpolation.m`、`dev_log.md` の 103）。実際の ekf_localizer の TF でも、
     同じ刻みを送り直す扱いを含めて tf2 と同じ値になる（`matlab/replay_tf_interpolation.sh`、`dev_log.md` の 105）。
     `ros2tf` の `sendTransform` は TF の配列を渡しても最初の 1 つしか送らない（`/tf`・`/tf_static` とも。R2024b・R2026a。`dev_log.md` の 104）。複数送るときは 1 つずつ呼ぶ。
-  - 点群・Plant とも指定の時刻で引けないと毎回 `warning`（ID `CR_debug:LidarTfFallback`・`CR_debug:PlantTfFallback` は `main.m` の `warning('off','all')` の後でも有効にしてある）。
+  - getNewTf が false で点群の stamp で引けないと毎回 `warning`（ID `CR_debug:LidarTfFallback` は `main.m` の `warning('off','all')` の後でも有効にしてある）。
+    最新で引くもの（Plant、getNewTf が true の LiDAR）は警告しない（TF が無ければ `Plant.Stamp`・`LIDAR_pose` が `[]`）。
   - 同じ再生で rviz2 と比べると（`matlab/replay_cr_debug_rviz.sh`、`dev_log.md` の 107）、点群の stamp で引けた周期の `LIDAR_pose` は rviz2 が描いた値とすべて一致する。
     違うのは TF が遅れて届いたとき：rviz2 は待ち（溢れた点群は捨てる）、CR_debug は待たずに最新の TF を使う。blue の再生で `rmem_max` が 208 kB のときは
     TF が最大 2 s 遅れて届き、CR_debug は 0.8 s 古い TF を使って点群の stamp の値と最大 0.16 m・48° 違った。8 MB では遅れは無く、
