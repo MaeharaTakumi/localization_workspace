@@ -2698,3 +2698,15 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
     ±π を前提にした所は見つからなかった（sin・cos・`eul2rotm` に入れる、`atan2(sin, cos)` で丸めた差をとる、
     予測経路どうしの差をとる（今の yaw は打ち消える）、値をそのまま記録して描く、のいずれか）。
 - 結果：`SensorFetcher.m` は 316 行 → 287 行。検証はしていない（ユーザー指示）。図は無し。
+
+## 111（2026-11-26）localization_tools の反映漏れ・コンテナの git・`replay_matlab.sh` の実行権
+
+- 目的：各リポジトリが最新かを確かめ、見つかった差を直す（ユーザー指示）。
+- やったこと：
+  - 全リポジトリを fetch して比べた。GitHub より遅れたものは無かった。109 の localization_tools の c2bc766 が未 push だったので push し、
+    コンテナ `test` にも反映した（`./deploy.sh localization_tools`）。
+  - c2bc766 で `matlab/replay_matlab.sh` の実行権が落ちていた（100755 → 100644）ので戻した（1cfa413）。
+  - コンテナの `localization_tools` の git は HEAD が 232224a のままで、14 ファイルがステージされていた（`sync.sh push` は `.git` を写さない）。
+    反映の後に `git fetch` と `git reset origin/main` で GitHub の main に合わせた。
+- 結果：コンテナの `localization_tools` は 1cfa413 でステージ・変更とも 0。`replay_matlab.sh` は引数なしで実行すると使い方が出る（再生はしていない）。
+  `localization_bringup` の `param/gazebo/` の yaml 2 つはコンテナだけの編集があり、そのまま残した。図は無し。
