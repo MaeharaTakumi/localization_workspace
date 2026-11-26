@@ -58,7 +58,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   （`origin` がフォーク、`upstream` が元）のブランチ `cr_debug`。フォルダ名に空白があるので `repos.yaml` には入れていない。
   CRLF・実行権付きの .m があるので、このフォルダの `.git` だけ `core.fileMode false` と `.git/info/attributes` の `* -text`。
   ホストの MATLAB R2026a（ROS Toolbox）は `-batch` で動かせる（MATLAB の MCP はつながらないことがある）。R2024b もある。
-- **MATLAB の SIP 版**（`src/whill_common_matlab-main _sip`。2026-11-23、ユーザー指示。`dev_log.md` の 109）：同じフォークのブランチ `cr_debug_sip`
+- **MATLAB の SIP 版**（`src/whill_common_matlab-main _sip`。2026-11-23、ユーザー指示）：同じフォークのブランチ `cr_debug_sip`
   （`cr_debug` から分けた。`.git` の設定は `_ndtDebug` と同じ）。WheelchairSIP（`/home/student/Documents/Research/Project-SIP/main`、
   `acsl-tcu/WheelchairSIP`）の推定器（`+estimator/@Estimate2`：A* の経路・障害物認識）・制御器（`+controller/@Control3`：MCMPC）・図
   （`myPlotter/myplotResult`）と、それらが使う `+mcmpc2`・`+tracker`・`+GridMap`・`config.m`・`RealTimePlotter` を写し、車両の姿勢を
@@ -251,12 +251,15 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
   RViz2 は設定ファイルの `Hide Left Dock` などを起動時に効かせない（`dev_log.md` の 53〜57・69・70）。
 - **MATLAB**（CR_debug。2026-11-19 から、`dev_log.md` の 99）：sensor(1) で `/velodyne_points` を購読し、最新の点群を毎周期 `data.LIDAR` に入れる（TF が無くても渡す）。
   sensor(5)（Matching）は `/localization_debug` を購読し、`ros2tf`（既定 10 s 溜める）から毎周期引き直す（前の周期の値は持ち越さない）。
-  引き方は `main.m` の `getNewTf`（`cfg.getNewTf`、既定 false。2026-11-26、ユーザー指示）：
+  引き方は `main.m` の `getNewTf`（`cfg.getNewTf`、既定 false。2026-11-26、ユーザー指示。`dev_log.md` の 109）：
   - `Plant`：**最新**の map → base（getNewTf によらない。一番新しい刻み＝今より 20〜40 ms 先の予測。base は Gazebo `base_footprint`、実機 `base_link`）。
     使った TF の stamp は `Plant.Stamp` [s]（図の点群の古さ `LiDAR_age` もこれを基準にするので、先読みの分だけ大きく出る）。
   - `data.LIDAR_pose`：getNewTf が false なら点群の stamp の map → velodyne（事前推定値。NDT の初期値と同じ値。時間のしきい値は無く、引けなければ最新）、
     true なら最新の map → velodyne（`Stamp` が `Plant.Stamp` と同じ）。TF が 1 つも無ければ `[]`。フィールドは X, Y, Z, Roll, Pitch, Yaw、`Stamp`（使った TF の stamp [s]）、
     `tform`（取付 base → velodyne。`/tf_static` を引いた `rigidtform3d`。引けなければ `[]`）、`NDT_info`（`/localization_debug` の最新。stamp が無いのでこの点群の結果とは限らない。無ければ `[]`）。
+  - `Plant` と `LIDAR_pose` の Roll・Pitch・Yaw は、前の周期の値（調整後）に最も近い角度にするので**前の周期から連続で、±π に収まらない**
+    （最初の周期は生の値。前の値は Plant と LiDAR で別々に持ち、姿勢が引けない周期は更新しない。`tform` は対象外。`dev_log.md` の 110）。
+  - TF を引く `lookup` は例外を握りつぶさない（`canTransform` が false なら `[]`。`getTransform` の例外はそのまま呼び出し元へ出る。`dev_log.md` の 110）。
   - 時刻を指定した `getTransform` は前後の TF の補間（位置は線形、回転は最短経路の slerp）。区間の外は外挿せず `canTransform` が false
     （R2024b で確認。localization_tools の `matlab/check_tf_interpolation.m`、`dev_log.md` の 103）。実際の ekf_localizer の TF でも、
     同じ刻みを送り直す扱いを含めて tf2 と同じ値になる（`matlab/replay_tf_interpolation.sh`、`dev_log.md` の 105）。
@@ -271,7 +274,7 @@ ros2 launch localization_bringup lidarslam.launch.py env:=blue      # SLAM（mat
     `LIDAR_waiting`・`tform_velodyne`・`data` 直下の `NDT_info` はやめた（新しい点群かは `LIDAR.header.stamp` が前の周期と違うかで、点群の時刻でない TF かは
     `LIDAR_pose.Stamp` が点群の stamp と違うかで分かる）。
   - 図は `+plotter/myplotResult.m`（点群の古さは `Plant.Stamp` − 点群の stamp）、動画は `+plotter/myplotPointCloudVideo.m`、
-    再生から図・動画までは localization_tools の `matlab/replay_matlab.sh`（`dev_log.md` の 61〜68・75・78・79・95・96・99）。
+    再生から図・動画までは localization_tools の `matlab/replay_matlab.sh`（`dev_log.md` の 61〜68・75・78・79・95・96・99・109・110）。
 - **ekf_localizer**（`src/ekf_core.cpp` など）：
   - ファイル：ROS 非依存のライブラリ `ekf_core`（`pose_utils`・`ekf_core`・`observation_model`・`ndt_model`・`odom_model`・`lagged_ekf`・`tf_grid`）と、
     ノード（`ekf_params`：パラメータ `EkfParams`、`ekf_filter`：組み立て `createFilter`、`ekf_localizer_node`）。コードの既定値は構造体の初期値だけ。

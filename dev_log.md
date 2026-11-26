@@ -2666,3 +2666,35 @@ Gazebo コンテナに加えた変更は `gazebo_changes.md`。
   - 受信バッファは `sysctl -w` なので、再起動すると 208 kB に戻る。実機の録画を再生するとき・実機で動かすときは、先に確かめる（CLAUDE.md）。
 
 ![受信バッファ 8 MB で、同じ再生で CR_debug と rviz2 が点群の stamp で引いた TF（実機 blue spin5）](dev_log_images/108_rviz_cr_debug_blue_spin5_rmem8m.png)
+
+## 109（2026-11-26）CR_debug の TF の引き方を getNewTf で選べるようにする
+
+- 目的：CR_debug（MATLAB）の sensor(5) で、最新の TF を使うか、点群の stamp の時刻の TF を使うかを設定で選べるようにする（ユーザー指示）。
+- やったこと：
+  - whill_common_matlab（`cr_debug` の 2ea880c、`cr_debug_sip` の d061f3b。中身は同じ）：
+    - `main.m` に `getNewTf`（`cfg.getNewTf`、既定 false）を足した。時間のしきい値 `lidarStampThreshold`（0.2 s）はやめた。
+    - `Plant` は getNewTf によらず**最新**の map → base にした（旧：今の ROS の時刻。引けなければ最新）。警告 `CR_debug:PlantTfFallback` はやめた。
+    - `data.LIDAR_pose` は、false なら点群の stamp の map → velodyne（引けなければ最新を使い、警告 `CR_debug:LidarTfFallback`）、true なら最新の map → velodyne。
+    - 今の時刻が要らなくなったので、`setTfTree` に ROS のノードを渡すのをやめた。
+    - `+plotter` はコメントを合わせ、点群の古さの図の縦軸を `Plant TF stamp - point cloud stamp [ms]` にした
+      （`Plant.Stamp` が最新の TF の stamp なので、予測の先読みの分だけ大きく出る）。
+    - `cr_debug_sip` の `main.m` にも `getNewTf` を入れた（f3ee238。SIP 版の変更と同じ commit）。
+  - localization_tools（c2bc766）：`check_cr_debug.m`・`check_cr_debug_plot.m`・`check_sip.m` に環境変数 `GET_NEW_TF` を足した（`TEST_LIDAR_THRESHOLD` はやめた）。
+    `check_cr_debug.m` は `Plant.Stamp` と今の ROS の時刻も記録し、`Plant.Stamp` − 今の時刻と、`LIDAR_pose.Stamp` が `Plant.Stamp` と同じ周期の数を表示する。
+- 結果：上の commit の内容から書いた項目で、検証の数値は commit に無い。図は無し。
+
+## 110（2026-11-26）CR_debug の SensorFetcher の整理・角度の連続化・try/catch の廃止
+
+- 目的：`+bridge/+CR_debug/SensorFetcher.m` の LiDAR・Matching・SLAM（sensor 1・4・5）の部分を整理し、角度を前の周期から連続にして、
+  TF を引くときの例外を握りつぶさないようにする（ユーザー指示）。
+- やったこと（`cr_debug` と `cr_debug_sip` で同じファイル）：
+  - 整理：毎周期の検査 2 つ（LiDAR が必須、実機で sensor 4 は不可）をコンストラクタに移し、tftree が空かの検査は消した。受信ループをセンサの `for` にして
+    `nostd` を消した。`lookup(parent, child, varargin)` にまとめて `lookupMap` を消した。LiDAR の姿勢を `lidarPose`、NDT の情報を `ndtInfoOf` に出した。
+    `Plant` の元は、sensor 4 なら真値、そうでなく sensor 5 なら最新の map → base とした。`Plant` への代入は `pose` のフィールドのループにした。
+  - 角度の連続化（動きが変わる）：`Plant` と `LIDAR_pose` の Roll・Pitch・Yaw を、前の周期の**調整後**の値に最も近い角度にする（`continueAngles`。
+    前の値は別々に持ち、姿勢が引けない周期は更新しない）。調整前の値を保存していた `AngleAdjstment` は消した。角度は ±π に収まらなくなる。
+  - `lookup` の try/catch を廃止した（`canTransform` が false なら `[]`。例外は呼び出し元へ出る）。
+  - 読んで確かめた：`Plant.Yaw`・`LIDAR_pose.Yaw` を使う側（SIP の Estimate2・Control3・mcmpc2・RealTimePlotter・`+plotter`・`myPlotter` など）に、
+    ±π を前提にした所は見つからなかった（sin・cos・`eul2rotm` に入れる、`atan2(sin, cos)` で丸めた差をとる、
+    予測経路どうしの差をとる（今の yaw は打ち消える）、値をそのまま記録して描く、のいずれか）。
+- 結果：`SensorFetcher.m` は 316 行 → 287 行。検証はしていない（ユーザー指示）。図は無し。
